@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>{% block title %}Daily AI Radar{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <div class="page-shell">
+      {% block content %}{% endblock %}
+      <footer>
+        <span>Daily AI Radar v{{ version }}</span>
+        <span>规则优先 · 评分可解释 · LLM 可选</span>
+      </footer>
+    </div>
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
+  </body>
+</html>
+

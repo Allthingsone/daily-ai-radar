@@ -1,0 +1,97 @@
+name: Daily radar and GitHub Pages
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Avoid the top of the hour, when scheduled Actions are more likely to queue.
+    - cron: "37 8 * * *"
+      timezone: "Asia/Shanghai"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "config/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "setup.py"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e .
+
+      - name: Run offline tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Require an arXiv contact address
+        env:
+          RADAR_CONTACT_EMAIL: ${{ vars.ARXIV_CONTACT_EMAIL }}
+        run: |
+          if [ -z "$RADAR_CONTACT_EMAIL" ]; then
+            echo "::error::Create the repository variable ARXIV_CONTACT_EMAIL before running this workflow."
+            exit 1
+          fi
+
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: Collect verified news and papers
+        env:
+          DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
+        run: daily-radar collect --kind all
+
+      - name: Build static site
+        run: >-
+          daily-radar build-site
+          --output site
+          --site-url "${{ steps.pages.outputs.base_url }}/"
+
+      - name: Validate publish artifact
+        run: |
+          test -s site/index.html
+          test -s site/data/latest.json
+          test -s site/daily.md
+          test -s site/feed.xml
+          test -s site/assets/pages.css
+          test -s site/assets/pages.js
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+          include-hidden-files: true
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

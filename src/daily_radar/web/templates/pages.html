@@ -1,0 +1,279 @@
+{% macro item_card(item) -%}
+<article
+  class="radar-card{% if item.is_important %} important{% endif %}"
+  data-radar-card
+  data-kind="{{ item.kind }}"
+  data-important="{{ 'true' if item.is_important else 'false' }}"
+  data-today="{{ 'true' if item.is_today else 'false' }}"
+  data-search="{{ item.search_text }}"
+>
+  <aside class="score-column" aria-label="综合得分 {{ '%.0f'|format(item.score) }}">
+    <div class="score-ring" style="--score: {{ [item.score, 100]|min }}">
+      <strong>{{ '%.0f'|format(item.score) }}</strong>
+      <span>SCORE</span>
+    </div>
+    {% if item.is_important %}<span class="featured-badge">精选</span>{% endif %}
+  </aside>
+
+  <div class="card-body">
+    <div class="card-meta">
+      <span class="category">{{ item.category_label }}</span>
+      <span>{{ item.source_name }}</span>
+      <time datetime="{{ item.published_at }}">{{ item.published_display }}</time>
+      {% if item.provenance.status %}
+      <span class="verification verification-{{ item.provenance.status }}">
+        <i></i>{{ item.verification_label }}
+      </span>
+      {% endif %}
+    </div>
+
+    <h3><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a></h3>
+    <p class="summary">{{ item.metadata.summary_zh or item.summary or '该来源未提供摘要。' }}</p>
+
+    <div class="provenance-strip">
+      <span class="provenance-kicker">来源凭据</span>
+      <a href="{{ item.provenance.final_url or item.url }}" target="_blank" rel="noopener noreferrer">
+        {{ item.provenance.domain or item.source_name }} ↗
+      </a>
+      <span>HTTP {{ item.provenance.http_status or 'API' }}</span>
+      <span>{{ item.provenance.method or '已由采集器验证' }}</span>
+      {% if item.kind == 'paper' and item.external_id %}<code>arXiv:{{ item.external_id }}</code>{% endif %}
+    </div>
+
+    {% if item.kind == 'paper' %}
+    <div class="paper-facts">
+      {% if item.authors %}
+      <span><b>作者</b> {{ item.authors[:4]|join(' · ') }}{% if item.authors|length > 4 %} et al.{% endif %}</span>
+      {% endif %}
+      {% if item.categories %}<span><b>分类</b> {{ item.categories|join(' / ') }}</span>{% endif %}
+      {% if item.metadata.pdf_url %}<a href="{{ item.metadata.pdf_url }}" target="_blank" rel="noopener noreferrer">PDF ↗</a>{% endif %}
+      {% if item.metadata.code_url %}<a href="{{ item.metadata.code_url }}" target="_blank" rel="noopener noreferrer">Code ↗</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if item.reasons %}
+    <div class="reason-list" aria-label="入选理由">
+      {% for reason in item.reasons %}<span>{{ reason }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if item.tags %}
+    <div class="tag-list">
+      {% for tag in item.tags[:8] %}<span># {{ tag }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if item.metadata.alternate_sources %}
+    <div class="alternate-sources">
+      <b>同一事件的其他已验证来源</b>
+      {% for source in item.metadata.alternate_sources %}
+      <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.name }} ↗</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <details class="audit-panel">
+      <summary>评分拆解与原始摘要 <span>＋</span></summary>
+      {% if item.component_scores %}
+      <div class="score-parts">
+        {% for key, score in item.component_scores.items() %}
+        <span><i>{{ component_labels.get(key, key) }}</i><b>{{ '%+.1f'|format(score) }}</b></span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <p>{{ item.summary or '该来源未提供原始摘要。' }}</p>
+    </details>
+
+    <div class="card-footer">
+      <span>记录可在 JSON 中独立复核</span>
+      <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">阅读原文 <b>↗</b></a>
+    </div>
+  </div>
+</article>
+{%- endmacro %}
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="每日 AI 新模型与技术成果，以及 MLLM/VLA 自动驾驶论文雷达。所有结果保留可核验来源。">
+    {% if site_url %}<link rel="canonical" href="{{ site_url }}">{% endif %}
+    <link rel="alternate" type="application/rss+xml" title="Daily AI Radar RSS" href="./feed.xml">
+    <title>Daily AI Radar · 每日 AI 情报</title>
+    <link rel="stylesheet" href="./assets/pages.css">
+    <script src="./assets/pages.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <div class="page-shell">
+      <header class="hero">
+        <nav class="topbar" aria-label="站点导航">
+          <a class="brand" href="./">
+            <span class="brand-mark"><i></i></span>
+            <span>DAILY AI RADAR</span>
+          </a>
+          <div class="top-links">
+            <a href="./data/latest.json">JSON</a>
+            <a href="./daily.md">MARKDOWN</a>
+            <a href="./feed.xml">RSS</a>
+            <span class="live-pill"><i></i> PAGES SNAPSHOT</span>
+          </div>
+        </nav>
+
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">INTELLIGENCE, NOT NOISE</p>
+            <h1>追踪真正面世的 AI 新模型与成果，<em>以及当天的驾驶智能论文。</em></h1>
+            <p class="hero-description">
+              新闻覆盖整个 AI 领域，但必须是具体模型、工具、数据集发布或研究成果；论文必须同时通过 MLLM/VLA 模型轴与自动驾驶应用轴。每条记录都保留原始链接与验证凭据。
+            </p>
+          </div>
+          <aside class="snapshot-card">
+            <span>LAST SUCCESSFUL BUILD</span>
+            <strong>{{ generated_display }}</strong>
+            <p>北京时间 · GitHub Actions 定时刷新</p>
+            <div><i></i>只展示已验证来源</div>
+          </aside>
+        </div>
+
+        <div class="stats-grid">
+          <div><span>本期条目</span><strong>{{ stats.total }}</strong><small>{{ news_window.label }}新闻 + 今日论文</small></div>
+          <div><span>AI 发布与成果</span><strong>{{ stats.news }}</strong><small>{{ news_window.label }}</small></div>
+          <div><span>今日领域论文</span><strong>{{ stats.papers_today }}</strong><small>{{ paper_today_window.local_date }}</small></div>
+          <div class="accent"><span>当前健康来源</span><strong>{{ healthy_sources }}/{{ source_checks|length }}</strong><small>{% if stale_sources %}{{ stale_sources }} 个状态超过 36 小时{% else %}最近一次来源检查{% endif %}</small></div>
+        </div>
+      </header>
+
+      <main>
+        <section class="truth-banner">
+          <div class="truth-icon">✓</div>
+          <div>
+            <strong>真实性边界</strong>
+            <p>页面确认链接可达、来源域名匹配及 arXiv 身份一致；这保证结果可追溯，但不等于自动证明报道中的每个事实。</p>
+          </div>
+          <a href="#source-health">查看来源健康</a>
+        </section>
+
+        <section class="radar-console" aria-label="日报内容">
+          <div class="kind-tabs" role="tablist" aria-label="内容类型">
+            <button type="button" class="active" data-kind-button="news" role="tab" aria-selected="true">
+              <span class="tab-index">N</span>
+              <span><b>AI 发布与成果</b><small>News intelligence</small></span>
+              <em>{{ news|length }}</em>
+            </button>
+            <button type="button" data-kind-button="paper" role="tab" aria-selected="false">
+              <span class="tab-index">P</span>
+              <span><b>MLLM / VLA 驾驶论文</b><small>Research radar</small></span>
+              <em>{{ papers|length }}</em>
+            </button>
+          </div>
+
+          <div class="filter-bar">
+            <div class="filter-groups">
+              <div class="segmented" aria-label="内容范围">
+                <button type="button" class="active" data-view-button="important">精选</button>
+                <button type="button" data-view-button="all">全部</button>
+              </div>
+              <div class="segmented paper-period" data-paper-controls hidden aria-label="论文发布时间">
+                <button type="button" class="active" data-paper-period="today">今日</button>
+                <button type="button" data-paper-period="recent" data-period-copy="{{ paper_recent_window.label }}">{{ paper_recent_window.label }}</button>
+              </div>
+            </div>
+            <label class="search-box">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.5-4.5m2.5-5.5a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+              <span class="sr-only">搜索标题、摘要、作者或标签</span>
+              <input type="search" data-radar-search placeholder="搜索标题、摘要、作者或标签">
+              <kbd>/</kbd>
+            </label>
+          </div>
+
+          <section class="content-panel" data-kind-panel="news">
+            <header class="section-heading">
+              <div><span>01</span><h2>AI 新发布与技术成果</h2></div>
+              <p><b data-result-count>{{ news|length }}</b> 条结果 · {{ news_window.label }}</p>
+            </header>
+            <div class="item-list">
+              {% for item in news %}{{ item_card(item) }}{% endfor %}
+            </div>
+            <div class="filter-empty" data-filter-empty hidden>
+              <div class="empty-radar"><i></i></div>
+              <h3>当前筛选范围没有结果</h3>
+              <p>可切换到“全部”或清除搜索关键词；系统不会用未验证条目补足数量。</p>
+            </div>
+          </section>
+
+          <section class="content-panel" data-kind-panel="paper" data-local-date="{{ paper_today_window.local_date }}" hidden>
+            <header class="section-heading">
+              <div><span>02</span><h2>MLLM / VLA × 自动驾驶论文</h2></div>
+              <p><b data-result-count>{{ stats.papers_today }}</b> 条结果 · <i data-period-label>{{ paper_today_window.label }}</i></p>
+            </header>
+            <div class="item-list">
+              {% for item in papers %}{{ item_card(item) }}{% endfor %}
+            </div>
+            <div class="filter-empty" data-filter-empty hidden>
+              <div class="empty-radar"><i></i></div>
+              <h3>{{ paper_today_window.local_date }} 暂无符合条件的新论文</h3>
+              <p>系统不会用旧论文填充“今日”。可切换到“{{ paper_recent_window.label }}”查看回补候选。</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="operations" id="source-health">
+          <header class="section-heading operations-heading">
+            <div><span>03</span><h2>采集运行与来源健康</h2></div>
+            <p>所有状态均来自最近一次实际网络请求</p>
+          </header>
+
+          <div class="operations-grid">
+            <section class="run-panel">
+              <div class="panel-title"><h3>最近采集任务</h3><span>RUN LOG</span></div>
+              {% if runs %}
+              <div class="run-list">
+                {% for run in runs %}
+                <article>
+                  <span class="run-kind">{{ run.kind }}</span>
+                  <div><strong>{{ run.finished_display }}</strong><small>抓取 {{ run.fetched }} · 入选 {{ run.accepted }} · 精选 {{ run.important }}</small></div>
+                  <span class="run-status {{ 'warn' if run.sources_failed else 'ok' }}">{{ run.sources_failed }} FAILED</span>
+                </article>
+                {% endfor %}
+              </div>
+              {% else %}
+              <p class="panel-empty">还没有真实采集记录。首次 GitHub Actions 运行后这里会自动出现任务日志。</p>
+              {% endif %}
+            </section>
+
+            <section class="source-panel">
+              <div class="panel-title"><h3>来源检查</h3><span>{{ healthy_sources }}/{{ source_checks|length }} FRESH &amp; HEALTHY</span></div>
+              {% if source_checks %}
+              <div class="source-list">
+                {% for source in source_checks %}
+                <article class="{{ source.health_class }}">
+                  <i></i>
+                  <div>
+                    <strong>{{ source.source_name }}</strong>
+                    <a href="{{ source.final_url or source.source_url }}" target="_blank" rel="noopener noreferrer">{{ source.source_url }}</a>
+                  </div>
+                  <span>HTTP {{ source.http_status or '—' }}<small>{{ source.item_count }} 条 · {{ source.elapsed_ms }} ms · {{ source.checked_display }}</small></span>
+                </article>
+                {% endfor %}
+              </div>
+              {% else %}
+              <p class="panel-empty">还没有逐来源检查记录。页面不会伪造“健康”状态。</p>
+              {% endif %}
+            </section>
+          </div>
+        </section>
+
+        <noscript><p class="noscript">启用 JavaScript 后可使用精选/全部、今日/近 4 日与搜索筛选；所有原始卡片仍已包含在本页 HTML 中。</p></noscript>
+      </main>
+
+      <footer>
+        <div><span class="brand-mark small"><i></i></span><b>Daily AI Radar v{{ version }}</b></div>
+        <p>规则优先 · 来源可追溯 · 静态页面无后台写入</p>
+        <div><a href="./data/latest.json">DATA</a><a href="./daily.md">MD</a><a href="./feed.xml">RSS</a></div>
+      </footer>
+    </div>
+  </body>
+</html>

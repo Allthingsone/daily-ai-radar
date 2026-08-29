@@ -1,0 +1,154 @@
+# Source tiers: 1 = official/primary, 2 = established editorial source,
+# 3 = community/discovery signal. A failed feed never stops the whole run.
+sources:
+  - id: openai-news
+    name: OpenAI News
+    url: https://openai.com/news/rss.xml
+    tier: 1
+    type: official
+    focus: 1.0
+    allowed_domains: [openai.com]
+    tags: [model-release, research, product]
+
+  - id: anthropic-news
+    name: Anthropic News
+    url: https://www.anthropic.com/rss.xml
+    tier: 1
+    type: official
+    focus: 1.0
+    # Anthropic currently has no official RSS endpoint. Keep the candidate in
+    # configuration so a future sitemap adapter can restore it without using
+    # an unaudited third-party feed.
+    enabled: false
+    allowed_domains: [anthropic.com]
+    tags: [model-release, research, safety]
+
+  - id: deepmind-blog
+    name: Google DeepMind Blog
+    url: https://deepmind.google/blog/rss.xml
+    tier: 1
+    type: official
+    focus: 1.0
+    allowed_domains: [deepmind.google]
+    tags: [research, model-release]
+
+  - id: google-ai
+    name: Google AI
+    url: https://blog.google/technology/ai/rss/
+    tier: 1
+    type: official
+    focus: 0.95
+    allowed_domains: [blog.google, google.com]
+    tags: [product, research, industry]
+
+  - id: microsoft-research
+    name: Microsoft Research
+    url: https://www.microsoft.com/en-us/research/feed/
+    tier: 1
+    type: official
+    focus: 0.85
+    allowed_domains: [microsoft.com]
+    tags: [research]
+
+  - id: nvidia-ai
+    name: NVIDIA AI Blog
+    url: https://blogs.nvidia.com/blog/category/deep-learning/feed/
+    tier: 1
+    type: official
+    focus: 0.9
+    allowed_domains: [nvidia.com]
+    tags: [research, hardware, autonomous-driving]
+
+  - id: huggingface-blog
+    name: Hugging Face Blog
+    url: https://huggingface.co/blog/feed.xml
+    tier: 1
+    type: official
+    focus: 1.0
+    allowed_domains: [huggingface.co]
+    tags: [open-source, research, model-release]
+
+  - id: github-ai
+    name: GitHub AI & ML
+    url: https://github.blog/ai-and-ml/feed/
+    tier: 1
+    type: official
+    focus: 0.9
+    allowed_domains: [github.blog, github.com]
+    tags: [developer-tools, agents, open-source]
+
+  - id: aws-ml
+    name: AWS Machine Learning Blog
+    url: https://aws.amazon.com/blogs/machine-learning/feed/
+    tier: 1
+    type: official
+    focus: 0.85
+    allowed_domains: [aws.amazon.com, amazon.com]
+    tags: [engineering, product]
+
+  - id: techcrunch-ai
+    name: TechCrunch AI
+    url: https://techcrunch.com/category/artificial-intelligence/feed/
+    tier: 2
+    type: media
+    focus: 0.9
+    allowed_domains: [techcrunch.com]
+    tags: [industry, product]
+
+  - id: the-decoder
+    name: The Decoder
+    url: https://the-decoder.com/feed/
+    tier: 2
+    type: media
+    focus: 0.95
+    allowed_domains: [the-decoder.com]
+    tags: [model-release, industry, research]
+
+  - id: venturebeat-ai
+    name: VentureBeat AI
+    # The category feed currently returns HTTP 308 to Python 3.9 clients; the
+    # canonical main feed is stable and downstream AI relevance rules remove
+    # unrelated stories.
+    url: https://venturebeat.com/feed/
+    tier: 2
+    type: media
+    focus: 0.75
+    allowed_domains: [venturebeat.com]
+    tags: [industry, enterprise]
+
+  - id: hnrss-ai
+    name: Hacker News · AI discovery
+    url: https://hnrss.org/newest?q=AI
+    tier: 3
+    type: community
+    focus: 0.45
+    allowed_domains: [news.ycombinator.com, hnrss.org]
+    allow_external_links: true
+    tags: [community, discovery]
+
+  - id: transformers-releases
+    name: Transformers Releases
+    url: https://github.com/huggingface/transformers/releases.atom
+    tier: 1
+    type: github-release
+    focus: 1.0
+    allowed_domains: [github.com]
+    tags: [open-source, developer-tools]
+
+  - id: vllm-releases
+    name: vLLM Releases
+    url: https://github.com/vllm-project/vllm/releases.atom
+    tier: 1
+    type: github-release
+    focus: 0.95
+    allowed_domains: [github.com]
+    tags: [open-source, inference]
+
+  - id: openai-python-releases
+    name: OpenAI Python Releases
+    url: https://github.com/openai/openai-python/releases.atom
+    tier: 1
+    type: github-release
+    focus: 0.85
+    allowed_domains: [github.com]
+    tags: [developer-tools, release]

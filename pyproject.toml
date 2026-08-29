@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daily-ai-radar"
+version = "0.4.0"
+description = "A transparent daily AI news and MLLM/VLA-for-autonomous-driving paper radar."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Daily AI Radar contributors" }]
+dependencies = [
+  "fastapi>=0.109,<0.116",
+  "jinja2>=3.1,<4",
+  "PyYAML>=6,<7",
+  "uvicorn>=0.23,<0.35",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4,<9",
+]
+
+[project.scripts]
+daily-radar = "daily_radar.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+daily_radar = [
+  "web/templates/*.html",
+  "web/static/*.css",
+  "web/static/*.js",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

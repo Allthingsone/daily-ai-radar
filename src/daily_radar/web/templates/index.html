@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Daily AI Radar · 每日 AI 情报{% endblock %}
+{% block content %}
+<header class="hero">
+  <div class="brand-row">
+    <a class="brand" href="/">
+      <span class="brand-mark"><span></span></span>
+      <span>DAILY AI RADAR</span>
+    </a>
+    <div class="live-pill"><i></i> LOCAL PREVIEW</div>
+  </div>
+  <div class="hero-copy">
+    <p class="eyebrow">INTELLIGENCE, NOT NOISE</p>
+    <h1>每天真正面世的 AI 新模型与新成果，<br><em>以及严格相关的驾驶论文。</em></h1>
+    <p class="hero-description">
+      新闻不限自动驾驶或多模态方向，但必须是具体的模型、工具、数据集发布或研究成果；论文必须同时通过 MLLM/VLA 模型轴与自动驾驶应用轴。
+      每个结果都保留原始链接、身份验证方式、分项得分和入选证据。
+    </p>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat"><span>{{ period_label }}条目</span><strong>{{ stats.total }}</strong></div>
+    <div class="stat"><span>AI 新闻</span><strong>{{ stats.news }}</strong></div>
+    <div class="stat"><span>领域论文</span><strong>{{ stats.papers }}</strong></div>
+    <div class="stat accent"><span>健康来源</span><strong>{{ healthy_sources }}/{{ source_checks|length }}</strong></div>
+  </div>
+</header>
+
+{% if has_demo %}
+<div class="notice">
+  <span>DEMO</span>
+  当前含明确标记的演示数据，仅用于预览界面与评分解释；运行真实采集后会同时显示真实结果。
+</div>
+{% endif %}
+
+<main>
+  <nav class="main-tabs" aria-label="内容类型">
+    <a href="/?kind=news&view={{ view }}&period=recent" class="{{ 'active' if kind == 'news' else '' }}">
+      <span class="tab-icon">N</span>
+      <span><strong>AI 新闻</strong><small>News intelligence</small></span>
+    </a>
+    <a href="/?kind=paper&view={{ view }}&period=today" class="{{ 'active' if kind == 'paper' else '' }}">
+      <span class="tab-icon">P</span>
+      <span><strong>MLLM / VLA 自动驾驶论文</strong><small>Research radar</small></span>
+    </a>
+  </nav>
+
+  <section class="toolbar">
+    <div class="toolbar-toggles">
+      <div class="view-toggle">
+        <a class="{{ 'active' if view == 'important' else '' }}" href="/?kind={{ kind }}&view=important&period={{ period }}">精选</a>
+        <a class="{{ 'active' if view == 'all' else '' }}" href="/?kind={{ kind }}&view=all&period={{ period }}">全部</a>
+      </div>
+      <div class="view-toggle period-toggle" aria-label="发布时间范围">
+        <a class="{{ 'active' if period == 'today' else '' }}" href="/?kind={{ kind }}&view={{ view }}&period=today">今日</a>
+        <a class="{{ 'active' if period == 'recent' else '' }}" href="/?kind={{ kind }}&view={{ view }}&period=recent">{{ recent_period_label }}</a>
+        <a class="{{ 'active' if period == 'all' else '' }}" href="/?kind={{ kind }}&view={{ view }}&period=all">历史</a>
+      </div>
+    </div>
+    <form method="get" action="/" class="filters">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input type="hidden" name="view" value="{{ view }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <label class="select-wrap">
+        <span>分类</span>
+        <select name="category" onchange="this.form.submit()">
+          <option value="">全部分类</option>
+          {% for value in categories %}
+          <option value="{{ value }}" {{ 'selected' if category == value else '' }}>{{ {'kind': kind, 'category': value}|category_label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="search-wrap">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+        <input name="q" value="{{ query }}" placeholder="搜索标题、摘要或标签">
+      </label>
+    </form>
+  </section>
+
+  <section class="feed-header">
+    <div>
+      <span class="section-index">01</span>
+      <h2>{{ period_label }} · {{ 'AI 发布与成果' if kind == 'news' else 'MLLM / VLA4AD 论文' }}</h2>
+    </div>
+    <p>{{ items|length }} 条结果</p>
+  </section>
+
+  <section class="item-list">
+    {% for item in items %}
+    <article class="radar-card {{ 'important' if item.is_important else '' }}" data-item-id="{{ item.id }}">
+      <div class="score-column">
+        <div class="score-ring" style="--score: {{ [item.score, 100]|min }}">
+          <strong>{{ '%.0f'|format(item.score) }}</strong>
+          <span>SCORE</span>
+        </div>
+        {% if item.is_important %}<div class="important-label">精选</div>{% endif %}
+      </div>
+
+      <div class="card-content">
+        {% set provenance = item.metadata.provenance or {} %}
+        <div class="card-meta">
+          <span class="category">{{ item|category_label }}</span>
+          <span>{{ item.source_name }}</span>
+          <span>发布时间 {{ item.published_at|localtime }}</span>
+          {% if item.metadata.demo %}<span class="demo-label">DEMO</span>{% endif %}
+          {% if provenance.status %}
+          <span class="verification-label verification-{{ provenance.status }}">{{ verification_labels.get(provenance.status, provenance.status) }}</span>
+          {% endif %}
+        </div>
+        <h3><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a></h3>
+        <p class="summary-zh">{{ item.metadata.summary_zh or item.summary }}</p>
+
+        <div class="provenance-strip">
+          <span class="provenance-title">原始来源</span>
+          <a href="{{ provenance.final_url or item.url }}" target="_blank" rel="noopener noreferrer">
+            {{ provenance.domain or item.source_name }} ↗
+          </a>
+          <span>HTTP {{ provenance.http_status or 'API' }}</span>
+          <span>验证方式：{{ provenance.method or '待验证' }}</span>
+          {% if item.kind == 'paper' and item.external_id %}
+          <code>arXiv:{{ item.external_id }}</code>
+          {% endif %}
+          {% if item.metadata.feed_url %}
+          <a class="feed-link" href="{{ item.metadata.feed_url }}" target="_blank" rel="noopener noreferrer">查看采集 Feed</a>
+          {% endif %}
+        </div>
+
+        {% if item.kind == 'paper' %}
+        <div class="paper-facts">
+          {% if item.authors %}<span><b>作者</b> {{ item.authors[:4]|join(' · ') }}{% if item.authors|length > 4 %} et al.{% endif %}</span>{% endif %}
+          {% if item.categories %}<span><b>分类</b> {{ item.categories|join(' / ') }}</span>{% endif %}
+          {% if item.metadata.code_url %}<a href="{{ item.metadata.code_url }}" target="_blank" rel="noopener">↗ Code</a>{% endif %}
+          {% if item.metadata.pdf_url %}<a href="{{ item.metadata.pdf_url }}" target="_blank" rel="noopener">↗ PDF</a>{% endif %}
+        </div>
+        {% endif %}
+
+        <div class="reason-list">
+          {% for reason in item.reasons %}<span>{{ reason }}</span>{% endfor %}
+        </div>
+        <div class="tags">
+          {% for tag in item.tags[:8] %}<span># {{ tag }}</span>{% endfor %}
+        </div>
+
+        {% if item.metadata.alternate_sources %}
+        <div class="alternate-sources">
+          <b>同一事件</b>
+          {% for source in item.metadata.alternate_sources %}
+          <a href="{{ source.url }}" target="_blank" rel="noopener">{{ source.name }} ✓</a>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <details class="audit-panel">
+          <summary>查看评分拆解与原文摘要 <span>＋</span></summary>
+          <div class="audit-grid">
+            {% for key, score in item.component_scores.items() %}
+            <div class="score-part">
+              <div><span>{{ component_labels.get(key, key) }}</span><b>{{ '%+.1f'|format(score) if score < 0 else '%.1f'|format(score) }}</b></div>
+              <div class="bar"><i style="width: {{ ([score|abs / component_max.get(key, 100) * 100, 100]|min) }}%"></i></div>
+            </div>
+            {% endfor %}
+          </div>
+          <p class="original-summary">{{ item.summary or '该来源未提供摘要。' }}</p>
+        </details>
+
+        <div class="card-actions">
+          <button data-feedback="saved" class="{{ 'selected' if item.feedback_value == 'saved' else '' }}">☆ 收藏</button>
+          <button data-feedback="read" class="{{ 'selected' if item.feedback_value == 'read' else '' }}">✓ 已读</button>
+          <button data-feedback="not_relevant" class="{{ 'selected' if item.feedback_value == 'not_relevant' else '' }}">－ 不相关</button>
+          <a href="{{ item.url }}" target="_blank" rel="noopener">阅读原文 <span>↗</span></a>
+        </div>
+      </div>
+    </article>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-radar"><i></i></div>
+      {% if kind == 'paper' and period == 'today' %}
+      <h3>{{ local_date }} 暂无符合条件的新论文</h3>
+      <p>系统不会用旧论文填充“今日”结果。可查看 {{ recent_period_label }}候选，或等待下一次 arXiv 更新。</p>
+      <a class="empty-action" href="/?kind=paper&view={{ view }}&period=recent">查看{{ recent_period_label }}论文</a>
+      {% else %}
+      <h3>这个时间范围还没有结果</h3>
+      <p>可调整时间范围，或运行一次真实采集。</p>
+      {% endif %}
+      <code>daily-radar collect --kind {{ kind }}</code>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="run-panel">
+    <div class="feed-header compact">
+      <div><span class="section-index">02</span><h2>最近采集任务</h2></div>
+      <a href="/api/runs">JSON API ↗</a>
+    </div>
+    {% if runs %}
+    <div class="run-table">
+      {% for run in runs %}
+      <div>
+        <span class="run-kind">{{ run.kind }}</span>
+        <span>{{ run.finished_at|localtime }}</span>
+        <span>抓取 {{ run.fetched }}</span>
+        <span>入选 {{ run.accepted }}</span>
+        <span>精选 {{ run.important }}</span>
+        <span class="{{ 'run-warn' if run.sources_failed else 'run-ok' }}">{{ run.sources_failed }} 个来源失败</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-runs">尚未运行真实采集。演示数据不会伪造采集记录。</p>
+    {% endif %}
+  </section>
+
+  <section class="source-panel">
+    <div class="feed-header compact">
+      <div><span class="section-index">03</span><h2>来源健康与采集凭据</h2></div>
+      <a href="/api/sources">SOURCE API ↗</a>
+    </div>
+    {% if source_checks %}
+    <div class="source-grid">
+      {% for source in source_checks %}
+      <article class="source-check {{ 'healthy' if source.success else 'unhealthy' }}">
+        <div>
+          <i></i>
+          <strong>{{ source.source_name }}</strong>
+          <span>{{ '正常' if source.success else '失败' }}</span>
+        </div>
+        <a href="{{ source.final_url or source.source_url }}" target="_blank" rel="noopener noreferrer">{{ source.source_url }}</a>
+        <p>HTTP {{ source.http_status or '—' }} · {{ source.item_count }} 条 · {{ source.elapsed_ms }} ms</p>
+        {% if source.error %}<small>{{ source.error }}</small>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-runs">升级后尚未执行采集；运行 <code>daily-radar collect --kind all</code> 后会生成逐来源健康记录。</p>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}
