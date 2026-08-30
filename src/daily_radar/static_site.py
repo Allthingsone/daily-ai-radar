@@ -22,15 +22,21 @@ SOURCE_HEALTH_MAX_AGE = timedelta(hours=36)
 
 VERIFICATION_LABELS = {
     "verified-primary": "一手来源已验证",
-    "verified-editorial": "媒体来源已验证",
-    "verified-external": "外链可访问",
+    "verified-publisher": "媒体来源已验证",
+    "verified-link": "外链可访问",
     "access-restricted": "来源限制自动访问",
     "unverified": "未验证",
 }
 
 COMPONENT_LABELS = {
+    "semantic_relevance": "语义相关性",
+    "novelty": "新颖性",
     "ai_relevance": "AI 相关性",
     "impact": "影响力",
+    "evidence_quality": "证据质量",
+    "mllm_vla_relevance": "MLLM/VLA 相关性",
+    "driving_relevance": "自动驾驶相关性",
+    "method_novelty": "方法新颖性",
     "source": "来源质量",
     "freshness": "新鲜度",
     "multi_source": "多源佐证",
@@ -155,6 +161,7 @@ def build_static_site(
         verified_only=True,
         published_since=news_window.published_since,
         eligible_only=True,
+        prompt_version=settings.llm.prompt_version,
     )
     papers_today = database.list_items(
         kind="paper",
@@ -162,6 +169,7 @@ def build_static_site(
         verified_only=True,
         published_since=paper_today_window.published_since,
         eligible_only=True,
+        prompt_version=settings.llm.prompt_version,
     )
     papers_recent = database.list_items(
         kind="paper",
@@ -169,6 +177,7 @@ def build_static_site(
         verified_only=True,
         published_since=paper_recent_window.published_since,
         eligible_only=True,
+        prompt_version=settings.llm.prompt_version,
     )
     today_urls = {item["canonical_url"] for item in papers_today}
 
@@ -200,6 +209,19 @@ def build_static_site(
 
     generated_display = current.astimezone(ZoneInfo(settings.timezone)).strftime(
         "%Y-%m-%d %H:%M %Z"
+    )
+    local_date = current.astimezone(ZoneInfo(settings.timezone)).date().isoformat()
+    llm_usage = database.llm_usage_summary(local_date)
+    llm_usage.update(
+        {
+            "provider": settings.llm.provider,
+            "model": settings.llm.model,
+            "thinking": "enabled" if settings.llm.thinking_enabled else "disabled",
+            "reasoning_effort": settings.llm.reasoning_effort,
+            "daily_token_limit": settings.llm.daily_token_limit,
+            "daily_cost_limit_usd": settings.llm.daily_cost_limit_usd,
+            "prompt_version": settings.llm.prompt_version,
+        }
     )
     stats = {
         "total": len(news) + len(papers_today),
@@ -237,6 +259,7 @@ def build_static_site(
         paper_recent_window=paper_recent_window,
         verification_labels=VERIFICATION_LABELS,
         component_labels=COMPONENT_LABELS,
+        llm_usage=llm_usage,
     )
 
     index_path = output_dir / "index.html"
@@ -259,6 +282,7 @@ def build_static_site(
             "papers_recent": _window_payload(paper_recent_window),
         },
         "counts": stats,
+        "llm_usage": llm_usage,
         "news": news,
         "papers_today": papers_today,
         "papers_recent": papers_recent,

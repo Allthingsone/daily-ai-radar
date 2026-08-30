@@ -3,16 +3,28 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
+from zoneinfo import ZoneInfo
 
-from .config import load_settings
+from .config import Settings, load_settings
 from .db import Database
 from .exporter import export_all
+from .llm import (
+    DeepSeekScreener,
+    LLMBudgetExceeded,
+    LLMConfigurationError,
+    LLMRequestError,
+    LLMResponseError,
+    LLMUsageUnavailable,
+)
 from .pipeline import RadarPipeline
+from .mailer import EmailConfigurationError, send_daily_email
 from .sample import seed_demo
 from .static_site import build_static_site
 from .time_windows import build_period_window
+from .usage_snapshot import restore_usage_snapshot
 from .verification import audit_database
 
 
@@ -64,6 +76,20 @@ def _parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("status", help="查看数据库统计和最近任务")
 
+    send_email = subparsers.add_parser(
+        "send-email", help="通过 163 SMTP 发送当天精选日报"
+    )
+    send_email.add_argument(
+        "--site-url", default="", help="邮件中的 GitHub Pages 完整链接"
+    )
+    restore_usage = subparsers.add_parser(
+        "restore-usage", help="从现有 Pages 快照恢复当天 DeepSeek 用量"
+    )
+    restore_usage.add_argument("--url", required=True, help="latest.json 的 HTTPS URL")
+    subparsers.add_parser(
+        "validate-prompts", help="离线检查 Prompt 文件、占位符并输出版本与哈希"
+    )
+
     serve = subparsers.add_parser("serve", help="启动可视化 Dashboard")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
@@ -79,6 +105,27 @@ def _print_run(summary: object) -> None:
     )
     for error in summary.errors:
         print(f"  warning: {error}")
+
+
+def _llm_usage_payload(settings: Settings, database: Database) -> dict:
+    local_date = (
+        datetime.now(timezone.utc)
+        .astimezone(ZoneInfo(settings.timezone))
+        .date()
+        .isoformat()
+    )
+    usage = database.llm_usage_summary(local_date)
+    usage.update(
+        {
+            "model": settings.llm.model,
+            "thinking": "enabled" if settings.llm.thinking_enabled else "disabled",
+            "reasoning_effort": settings.llm.reasoning_effort,
+            "daily_token_limit": settings.llm.daily_token_limit,
+            "daily_cost_limit_usd": settings.llm.daily_cost_limit_usd,
+            "prompt_version": settings.llm.prompt_version,
+        }
+    )
+    return usage
 
 
 def main(argv: Iterable[str] = None) -> int:
@@ -111,9 +158,26 @@ def main(argv: Iterable[str] = None) -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1 if result["unverified"] or result["unknown_source"] else 0
     if args.command == "collect":
-        summaries = RadarPipeline(settings, database).collect(args.kind)
+        try:
+            summaries = RadarPipeline(settings, database).collect(args.kind)
+        except (
+            LLMConfigurationError,
+            LLMBudgetExceeded,
+            LLMRequestError,
+            LLMResponseError,
+            LLMUsageUnavailable,
+        ) as exc:
+            print(f"DeepSeek screening stopped: {exc}", file=sys.stderr)
+            return 2
         for summary in summaries:
             _print_run(summary)
+        usage = _llm_usage_payload(settings, database)
+        print(
+            f"[deepseek] model={usage['model']} thinking=max "
+            f"tokens={usage['total_tokens']}/{usage['daily_token_limit']} "
+            f"estimated_cost=${usage['estimated_cost_usd']:.6f}/"
+            f"${usage['daily_cost_limit_usd']:.2f}"
+        )
         return 1 if summaries and all(summary.sources_ok == 0 for summary in summaries) else 0
     if args.command == "export":
         database.initialize()
@@ -136,6 +200,7 @@ def main(argv: Iterable[str] = None) -> int:
                 "news": news_window.published_since,
                 "paper": paper_window.published_since,
             },
+            prompt_version=settings.llm.prompt_version,
         )
         print(
             f"Export scope: news={news_window.label}, paper={paper_window.label}"
@@ -163,15 +228,48 @@ def main(argv: Iterable[str] = None) -> int:
                     "stats": database.stats(),
                     "verified_stats": database.stats(verified_only=True),
                     "feed_stats": database.stats(
-                        verified_only=True, eligible_only=True
+                        verified_only=True,
+                        eligible_only=True,
+                        prompt_version=settings.llm.prompt_version,
                     ),
                     "sources": database.recent_source_checks(),
                     "runs": database.recent_runs(),
+                    "llm_usage": _llm_usage_payload(settings, database),
+                    "llm_calls": database.recent_llm_usage(),
                 },
                 ensure_ascii=False,
                 indent=2,
             )
         )
+        return 0
+    if args.command == "send-email":
+        database.initialize()
+        try:
+            result = send_daily_email(
+                settings, database, site_url=args.site_url
+            )
+        except EmailConfigurationError as exc:
+            print(f"Email configuration error: {exc}", file=sys.stderr)
+            return 2
+        print(
+            f"Email sent: news={result['news']} papers={result['papers']}"
+        )
+        return 0
+    if args.command == "restore-usage":
+        database.initialize()
+        result = restore_usage_snapshot(database, settings, args.url)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+    if args.command == "validate-prompts":
+        screener = DeepSeekScreener(
+            settings.llm, database, settings.timezone
+        )
+        try:
+            manifest = screener.prompt_manifest()
+        except LLMConfigurationError as exc:
+            print(f"Prompt validation error: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(manifest, ensure_ascii=False, indent=2))
         return 0
     if args.command == "serve":
         try:

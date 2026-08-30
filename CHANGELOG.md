@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 - 2026-08-29
+
+- Replaced deterministic production selection with mandatory `deepseek-v4-pro` semantic screening in Thinking `max` mode.
+- Kept URL/domain, publication-time, source provenance, and arXiv identity checks outside the model.
+- Excluded entries whose source does not provide a parseable publication timestamp, and guarded against implausible future timestamps.
+- Added separately editable system, news, and paper prompts with prompt version and SHA-256 audit metadata.
+- Added strict JSON decision validation and fail-closed behavior; there is no automatic Flash or keyword-score fallback.
+- Added per-call prompt/completion/reasoning/cache token accounting and estimated peak/off-peak DeepSeek cost.
+- Added 250k-token and USD 1 daily caps, including same-day usage carry-forward between fresh GitHub runners.
+- Added DeepSeek usage to the Pages snapshot, JSON output, CLI status, and workflow logs.
+- Added optional 163 SMTP daily email using one account as sender and recipient with credentials stored only in Actions Secrets.
+
 ## 0.4.0 - 2026-08-29
 
 - Added a self-contained static site builder for GitHub Pages.

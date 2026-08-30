@@ -7,10 +7,10 @@
   data-today="{{ 'true' if item.is_today else 'false' }}"
   data-search="{{ item.search_text }}"
 >
-  <aside class="score-column" aria-label="综合得分 {{ '%.0f'|format(item.score) }}">
+  <aside class="score-column" aria-label="DeepSeek 重要性 {{ '%.0f'|format(item.score) }}">
     <div class="score-ring" style="--score: {{ [item.score, 100]|min }}">
       <strong>{{ '%.0f'|format(item.score) }}</strong>
-      <span>SCORE</span>
+      <span>LLM</span>
     </div>
     {% if item.is_important %}<span class="featured-badge">精选</span>{% endif %}
   </aside>
@@ -73,7 +73,7 @@
     {% endif %}
 
     <details class="audit-panel">
-      <summary>评分拆解与原始摘要 <span>＋</span></summary>
+      <summary>DeepSeek 判断维度与原始摘要 <span>＋</span></summary>
       {% if item.component_scores %}
       <div class="score-parts">
         {% for key, score in item.component_scores.items() %}
@@ -127,7 +127,7 @@
             <p class="eyebrow">INTELLIGENCE, NOT NOISE</p>
             <h1>追踪真正面世的 AI 新模型与成果，<em>以及当天的驾驶智能论文。</em></h1>
             <p class="hero-description">
-              新闻覆盖整个 AI 领域，但必须是具体模型、工具、数据集发布或研究成果；论文必须同时通过 MLLM/VLA 模型轴与自动驾驶应用轴。每条记录都保留原始链接与验证凭据。
+              新闻覆盖整个 AI 领域，但必须是具体模型、工具、数据集发布或研究成果；论文必须同时属于 MLLM/VLA 与自动驾驶。语义入选由 DeepSeek V4-Pro Thinking max 完成，每条记录都保留原始链接与验证凭据。
             </p>
           </div>
           <aside class="snapshot-card">
@@ -151,7 +151,7 @@
           <div class="truth-icon">✓</div>
           <div>
             <strong>真实性边界</strong>
-            <p>页面确认链接可达、来源域名匹配及 arXiv 身份一致；这保证结果可追溯，但不等于自动证明报道中的每个事实。</p>
+            <p>页面确认链接可达、来源域名匹配及 arXiv 身份一致；DeepSeek 只对这些候选做语义筛选，不替代事实核验。今日调用 {{ llm_usage.successful_calls }} 次，{{ llm_usage.total_tokens }} / {{ llm_usage.daily_token_limit }} Token，估算 ${{ '%.4f'|format(llm_usage.estimated_cost_usd) }} / ${{ '%.2f'|format(llm_usage.daily_cost_limit_usd) }}。</p>
           </div>
           <a href="#source-health">查看来源健康</a>
         </section>
@@ -271,7 +271,7 @@
 
       <footer>
         <div><span class="brand-mark small"><i></i></span><b>Daily AI Radar v{{ version }}</b></div>
-        <p>规则优先 · 来源可追溯 · 静态页面无后台写入</p>
+        <p>来源硬校验 · DeepSeek V4-Pro max 语义筛选 · Prompt {{ llm_usage.prompt_version }}</p>
         <div><a href="./data/latest.json">DATA</a><a href="./daily.md">MD</a><a href="./feed.xml">RSS</a></div>
       </footer>
     </div>

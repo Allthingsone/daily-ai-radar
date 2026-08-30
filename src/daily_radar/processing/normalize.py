@@ -7,7 +7,7 @@ import unicodedata
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from email.utils import parsedate_to_datetime
-from typing import Iterable, List
+from typing import Iterable, List, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
@@ -143,26 +143,32 @@ def title_similarity(left: str, right: str) -> float:
     return 0.7 * jaccard + 0.3 * sequence
 
 
-def parse_datetime(value: str, fallback: datetime = None) -> datetime:
+def parse_datetime_with_status(
+    value: str, fallback: datetime = None
+) -> Tuple[datetime, bool]:
     fallback = fallback or datetime.now(timezone.utc)
     if not value:
-        return fallback
+        return fallback, False
     text = value.strip()
     try:
         parsed = parsedate_to_datetime(text)
         if parsed is not None:
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)
-            return parsed.astimezone(timezone.utc)
+            return parsed.astimezone(timezone.utc), True
     except (TypeError, ValueError, OverflowError):
         pass
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+        return parsed.astimezone(timezone.utc), True
     except ValueError:
-        return fallback
+        return fallback, False
+
+
+def parse_datetime(value: str, fallback: datetime = None) -> datetime:
+    return parse_datetime_with_status(value, fallback)[0]
 
 
 def unique_preserving_order(values: Iterable[str]) -> List[str]:

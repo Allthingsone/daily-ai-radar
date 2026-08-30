@@ -8,7 +8,7 @@ from pathlib import Path
 
 from daily_radar.config import load_settings
 from daily_radar.db import Database
-from daily_radar.eligibility import NEWS_GATE_RULE_VERSION
+from daily_radar.eligibility import LLM_SCREENING_RULE_VERSION
 from daily_radar.sample import build_demo_items
 from daily_radar.static_site import build_static_site
 
@@ -36,9 +36,10 @@ class StaticSiteTests(unittest.TestCase):
                 "http_status": 200,
                 "method": "source-domain-match",
             }
-            news.metadata["news_gate"] = {
-                "passed": True,
-                "rule_version": NEWS_GATE_RULE_VERSION,
+            news.metadata["llm_screening"] = {
+                "selected": True,
+                "rule_version": LLM_SCREENING_RULE_VERSION,
+                "prompt_version": "2026-08-29-v1",
             }
             paper_today.published_at = fixed_now - timedelta(hours=1)
             paper_today.metadata["provenance"] = {
@@ -55,9 +56,10 @@ class StaticSiteTests(unittest.TestCase):
                 "method": "arxiv-id-match",
             }
             unverified.published_at = fixed_now - timedelta(hours=1)
-            unverified.metadata["news_gate"] = {
-                "passed": True,
-                "rule_version": NEWS_GATE_RULE_VERSION,
+            unverified.metadata["llm_screening"] = {
+                "selected": True,
+                "rule_version": LLM_SCREENING_RULE_VERSION,
+                "prompt_version": "2026-08-29-v1",
             }
 
             for item in (news, paper_today, paper_old, unverified):

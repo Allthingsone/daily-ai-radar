@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from daily_radar.db import Database
-from daily_radar.eligibility import NEWS_GATE_RULE_VERSION
+from daily_radar.eligibility import LLM_SCREENING_RULE_VERSION
 from daily_radar.models import CollectionResult, RunSummary
 from daily_radar.sample import build_demo_items
 
@@ -80,18 +80,18 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual([item["title"] for item in stored], [newest.title])
             self.assertEqual(database.stats(published_since=cutoff)["total"], 1)
 
-    def test_feed_eligibility_hides_news_without_release_or_result_gate(self):
+    def test_feed_eligibility_hides_items_without_current_llm_selection(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")
             database.initialize()
             accepted, rejected = build_demo_items()[:2]
-            accepted.metadata["news_gate"] = {
-                "passed": True,
-                "rule_version": NEWS_GATE_RULE_VERSION,
+            accepted.metadata["llm_screening"] = {
+                "selected": True,
+                "rule_version": LLM_SCREENING_RULE_VERSION,
             }
-            rejected.metadata["news_gate"] = {
-                "passed": False,
-                "rule_version": NEWS_GATE_RULE_VERSION,
+            rejected.metadata["llm_screening"] = {
+                "selected": False,
+                "rule_version": LLM_SCREENING_RULE_VERSION,
             }
             database.upsert_item(accepted)
             database.upsert_item(rejected)
@@ -99,6 +99,14 @@ class DatabaseTests(unittest.TestCase):
             stored = database.list_items(kind="news", eligible_only=True)
             self.assertEqual([item["title"] for item in stored], [accepted.title])
             self.assertEqual(database.stats(eligible_only=True)["news"], 1)
+            self.assertEqual(
+                database.list_items(
+                    kind="news",
+                    eligible_only=True,
+                    prompt_version="different-prompt",
+                ),
+                [],
+            )
 
 
 if __name__ == "__main__":

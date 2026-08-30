@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 
 from .db import Database
+from .eligibility import LLM_SCREENING_RULE_VERSION
 from .models import RadarItem
 from .processing.normalize import canonicalize_url, fingerprint_title
 from .processing.scoring import score_news, score_paper
@@ -81,6 +82,12 @@ def build_demo_items() -> List[RadarItem]:
     for item in news:
         score_news(item, ["multimodal", "agent", "autonomous driving"])
         item.is_important = item.score >= 45
+        item.metadata["llm_screening"] = {
+            "selected": True,
+            "rule_version": LLM_SCREENING_RULE_VERSION,
+            "provider": "demo",
+            "prompt_version": "2026-08-29-v1",
+        }
 
     paper_specs = [
         (
@@ -131,6 +138,12 @@ def build_demo_items() -> List[RadarItem]:
         if passed:
             item.tags.insert(0, "DEMO")
             item.is_important = item.score >= 42
+            item.metadata["llm_screening"] = {
+                "selected": True,
+                "rule_version": LLM_SCREENING_RULE_VERSION,
+                "provider": "demo",
+                "prompt_version": "2026-08-29-v1",
+            }
             papers.append(item)
     return news + papers
 
@@ -141,4 +154,3 @@ def seed_demo(database: Database) -> int:
     for item in items:
         database.upsert_item(item)
     return len(items)
-

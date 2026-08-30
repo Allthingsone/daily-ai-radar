@@ -12,7 +12,7 @@ from ..processing.normalize import (
     canonicalize_url,
     clean_html,
     fingerprint_title,
-    parse_datetime,
+    parse_datetime_with_status,
     unique_preserving_order,
 )
 from .base import fetch_response
@@ -80,7 +80,9 @@ def parse_feed(payload: bytes, source: SourceConfig, kind: str = "news") -> List
         published_raw = _first_text(
             entry, ("published", "pubdate", "updated", "date", "dc:date")
         )
-        published_at = parse_datetime(published_raw, now)
+        published_at, published_at_verified = parse_datetime_with_status(
+            published_raw, now
+        )
         external_id = clean_html(_first_text(entry, ("guid", "id")))
         categories: List[str] = []
         for category in _children(entry, ("category", "subject")):
@@ -112,7 +114,11 @@ def parse_feed(payload: bytes, source: SourceConfig, kind: str = "news") -> List
                 tags=list(source.tags),
                 fingerprint=fingerprint_title(title),
                 cluster_key=fingerprint_title(title),
-                metadata={"feed_url": source.url},
+                metadata={
+                    "feed_url": source.url,
+                    "published_raw": published_raw,
+                    "published_at_verified": published_at_verified,
+                },
             )
         )
     return result

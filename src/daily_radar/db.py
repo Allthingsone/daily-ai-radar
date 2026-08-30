@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-from .eligibility import NEWS_GATE_RULE_VERSION
+from .eligibility import LLM_SCREENING_RULE_VERSION
 from .models import CollectionResult, RadarItem, RunSummary
 
 
@@ -94,6 +94,33 @@ CREATE TABLE IF NOT EXISTS source_checks (
 
 CREATE INDEX IF NOT EXISTS idx_source_checks_source_id
 ON source_checks(source_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurred_at TEXT NOT NULL,
+    local_date TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    call_count INTEGER NOT NULL DEFAULT 1,
+    request_items INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_hit_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_usd REAL NOT NULL DEFAULT 0,
+    pricing_tier TEXT NOT NULL DEFAULT '',
+    response_id TEXT NOT NULL DEFAULT '',
+    prompt_version TEXT NOT NULL DEFAULT '',
+    prompt_sha256 TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
+    error TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_usage_local_date
+ON llm_usage(local_date, id DESC);
 """
 
 
@@ -142,6 +169,22 @@ class Database:
             if "domain_match" not in columns:
                 connection.execute(
                     "ALTER TABLE source_checks ADD COLUMN domain_match INTEGER NOT NULL DEFAULT 0"
+                )
+            usage_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(llm_usage)").fetchall()
+            }
+            if "prompt_version" not in usage_columns:
+                connection.execute(
+                    "ALTER TABLE llm_usage ADD COLUMN prompt_version TEXT NOT NULL DEFAULT ''"
+                )
+            if "prompt_sha256" not in usage_columns:
+                connection.execute(
+                    "ALTER TABLE llm_usage ADD COLUMN prompt_sha256 TEXT NOT NULL DEFAULT ''"
+                )
+            if "call_count" not in usage_columns:
+                connection.execute(
+                    "ALTER TABLE llm_usage ADD COLUMN call_count INTEGER NOT NULL DEFAULT 1"
                 )
 
     def upsert_item(self, item: RadarItem) -> int:
@@ -281,6 +324,95 @@ class Database:
                 rows,
             )
 
+    def record_llm_usage(self, record: Dict[str, Any]) -> int:
+        """Persist billable usage without ever storing prompts or API secrets."""
+
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO llm_usage (
+                    occurred_at, local_date, provider, model, purpose,
+                    call_count, request_items, prompt_tokens, completion_tokens,
+                    reasoning_tokens, cache_hit_tokens, cache_miss_tokens,
+                    total_tokens, estimated_cost_usd, pricing_tier,
+                    response_id, prompt_version, prompt_sha256, status, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(record.get("occurred_at", "")),
+                    str(record.get("local_date", "")),
+                    str(record.get("provider", "")),
+                    str(record.get("model", "")),
+                    str(record.get("purpose", "")),
+                    max(1, int(record.get("call_count", 1) or 1)),
+                    int(record.get("request_items", 0) or 0),
+                    int(record.get("prompt_tokens", 0) or 0),
+                    int(record.get("completion_tokens", 0) or 0),
+                    int(record.get("reasoning_tokens", 0) or 0),
+                    int(record.get("cache_hit_tokens", 0) or 0),
+                    int(record.get("cache_miss_tokens", 0) or 0),
+                    int(record.get("total_tokens", 0) or 0),
+                    float(record.get("estimated_cost_usd", 0) or 0),
+                    str(record.get("pricing_tier", "")),
+                    str(record.get("response_id", "")),
+                    str(record.get("prompt_version", "")),
+                    str(record.get("prompt_sha256", "")),
+                    str(record.get("status", "failed")),
+                    str(record.get("error", ""))[:1000],
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def llm_usage_summary(self, local_date: str) -> Dict[str, Any]:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    SUM(call_count) AS calls,
+                    SUM(CASE WHEN status = 'success' THEN call_count ELSE 0 END) AS successful_calls,
+                    SUM(CASE WHEN status = 'failed' THEN call_count ELSE 0 END) AS failed_calls,
+                    SUM(request_items) AS request_items,
+                    SUM(prompt_tokens) AS prompt_tokens,
+                    SUM(completion_tokens) AS completion_tokens,
+                    SUM(reasoning_tokens) AS reasoning_tokens,
+                    SUM(cache_hit_tokens) AS cache_hit_tokens,
+                    SUM(cache_miss_tokens) AS cache_miss_tokens,
+                    SUM(total_tokens) AS total_tokens,
+                    SUM(estimated_cost_usd) AS estimated_cost_usd
+                FROM llm_usage
+                WHERE local_date = ?
+                """,
+                (local_date,),
+            ).fetchone()
+        integer_keys = (
+            "calls",
+            "successful_calls",
+            "failed_calls",
+            "request_items",
+            "prompt_tokens",
+            "completion_tokens",
+            "reasoning_tokens",
+            "cache_hit_tokens",
+            "cache_miss_tokens",
+            "total_tokens",
+        )
+        result: Dict[str, Any] = {
+            key: int(row[key] or 0) for key in integer_keys
+        }
+        result["estimated_cost_usd"] = round(
+            float(row["estimated_cost_usd"] or 0), 6
+        )
+        result["local_date"] = local_date
+        return result
+
+    def recent_llm_usage(self, limit: int = 20) -> List[Dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM llm_usage ORDER BY id DESC LIMIT ?",
+                (max(1, min(limit, 200)),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def record_feedback(self, item_id: int, value: str, note: str = "") -> None:
         if value not in {"saved", "not_relevant", "read"}:
             raise ValueError("Unsupported feedback value")
@@ -321,6 +453,7 @@ class Database:
         verified_only: bool = False,
         published_since: Optional[datetime] = None,
         eligible_only: bool = False,
+        prompt_version: str = "",
     ) -> List[Dict[str, Any]]:
         clauses: List[str] = []
         params: List[Any] = []
@@ -346,11 +479,15 @@ class Database:
             params.append(_iso(published_since))
         if eligible_only:
             clauses.append(
-                "(kind != 'news' OR ("
-                "COALESCE(json_extract(metadata_json, '$.news_gate.passed'), 0) = 1 "
-                "AND json_extract(metadata_json, '$.news_gate.rule_version') = ?))"
+                "(COALESCE(json_extract(metadata_json, '$.llm_screening.selected'), 0) = 1 "
+                "AND json_extract(metadata_json, '$.llm_screening.rule_version') = ?)"
             )
-            params.append(NEWS_GATE_RULE_VERSION)
+            params.append(LLM_SCREENING_RULE_VERSION)
+            if prompt_version:
+                clauses.append(
+                    "json_extract(metadata_json, '$.llm_screening.prompt_version') = ?"
+                )
+                params.append(prompt_version)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         params.append(max(1, min(limit, 500)))
         with self.connect() as connection:
@@ -373,6 +510,7 @@ class Database:
         verified_only: bool = False,
         published_since: Optional[datetime] = None,
         eligible_only: bool = False,
+        prompt_version: str = "",
     ) -> Dict[str, int]:
         clauses: List[str] = []
         params: List[Any] = []
@@ -386,11 +524,15 @@ class Database:
             params.append(_iso(published_since))
         if eligible_only:
             clauses.append(
-                "(kind != 'news' OR ("
-                "COALESCE(json_extract(metadata_json, '$.news_gate.passed'), 0) = 1 "
-                "AND json_extract(metadata_json, '$.news_gate.rule_version') = ?))"
+                "(COALESCE(json_extract(metadata_json, '$.llm_screening.selected'), 0) = 1 "
+                "AND json_extract(metadata_json, '$.llm_screening.rule_version') = ?)"
             )
-            params.append(NEWS_GATE_RULE_VERSION)
+            params.append(LLM_SCREENING_RULE_VERSION)
+            if prompt_version:
+                clauses.append(
+                    "json_extract(metadata_json, '$.llm_screening.prompt_version') = ?"
+                )
+                params.append(prompt_version)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self.connect() as connection:
             row = connection.execute(

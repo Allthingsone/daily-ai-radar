@@ -791,6 +791,12 @@ def news_category_label(value: str) -> str:
 
 def paper_category_label(value: str) -> str:
     return {
+        "vla-policy": "VLA 驾驶策略",
+        "mllm-reasoning": "MLLM 驾驶推理",
+        "perception-understanding": "多模态感知与理解",
+        "planning": "语言/多模态规划",
+        "benchmark-dataset": "数据集与评测",
+        "other": "其他双轴论文",
         "end-to-end-vla": "端到端 VLA",
         "reasoning-vla": "推理增强 VLA",
         "world-model": "世界模型",

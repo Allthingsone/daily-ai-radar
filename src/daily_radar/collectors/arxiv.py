@@ -13,7 +13,7 @@ from ..processing.normalize import (
     canonicalize_url,
     clean_html,
     fingerprint_title,
-    parse_datetime,
+    parse_datetime_with_status,
     unique_preserving_order,
 )
 from .base import fetch_response
@@ -143,6 +143,12 @@ class ArxivCollector:
             comment = clean_html(_text(entry, "comment"))
             journal_ref = clean_html(_text(entry, "journal_ref"))
             doi = clean_html(_text(entry, "doi"))
+            published_raw = _text(entry, "published")
+            published_at, published_at_verified = parse_datetime_with_status(
+                published_raw, now
+            )
+            if not published_at_verified:
+                continue
             code_match = re.search(r"https?://github\.com/[^\s)\]}>,]+", f"{abstract} {comment}")
             metadata = {
                 "arxiv_version": arxiv_id,
@@ -152,6 +158,8 @@ class ArxivCollector:
                 "doi": doi,
                 "arxiv_id": arxiv_id_without_version,
                 "source_record_url": url,
+                "published_raw": published_raw,
+                "published_at_verified": True,
             }
             if code_match:
                 metadata["code_url"] = code_match.group(0).rstrip(".")
@@ -166,7 +174,7 @@ class ArxivCollector:
                     source_tier=1,
                     source_type="paper-api",
                     source_focus=1.0,
-                    published_at=parse_datetime(_text(entry, "published"), now),
+                    published_at=published_at,
                     summary=abstract,
                     external_id=arxiv_id_without_version,
                     authors=unique_preserving_order(authors),

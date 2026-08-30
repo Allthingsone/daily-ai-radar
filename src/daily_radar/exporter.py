@@ -61,7 +61,7 @@ def export_markdown(
                 [
                     f"### {important}[{item['title']}]({item['url']})",
                     "",
-                    f"- 得分：**{item['score']:.1f}**",
+                    f"- DeepSeek 重要性：**{item['score']:.1f}**",
                     f"- 分类：{_category_label(item)}",
                     f"- 来源：{item['source_name']}",
                     f"- 时间：{item['published_at']}",
@@ -131,11 +131,15 @@ def export_all(
     database: Database,
     output_dir: Path,
     published_since_by_kind: Optional[Dict[str, Optional[datetime]]] = None,
+    prompt_version: str = "",
 ) -> List[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if published_since_by_kind is None:
         items = database.list_items(
-            limit=500, verified_only=True, eligible_only=True
+            limit=500,
+            verified_only=True,
+            eligible_only=True,
+            prompt_version=prompt_version,
         )
     else:
         items = []
@@ -147,6 +151,7 @@ def export_all(
                     verified_only=True,
                     published_since=published_since_by_kind.get(kind),
                     eligible_only=True,
+                    prompt_version=prompt_version,
                 )
             )
         items.sort(key=lambda item: item["published_at"], reverse=True)

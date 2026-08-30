@@ -19,10 +19,15 @@ from ..time_windows import PeriodWindow, build_period_window
 
 WEB_ROOT = Path(__file__).resolve().parent
 COMPONENT_MAX = {
+    "semantic_relevance": 100,
+    "evidence_quality": 100,
+    "mllm_vla_relevance": 100,
+    "driving_relevance": 100,
+    "method_novelty": 100,
     "relevance": 25,
-    "impact": 25,
+    "impact": 100,
     "source": 15,
-    "novelty": 10,
+    "novelty": 100,
     "corroboration": 10,
     "momentum": 10,
     "personal": 5,
@@ -30,12 +35,17 @@ COMPONENT_MAX = {
     "domain_relevance": 35,
     "contribution": 20,
     "evidence": 15,
-    "reproducibility": 10,
+    "reproducibility": 100,
     "recency": 10,
     "community": 5,
 }
 
 COMPONENT_LABELS = {
+    "semantic_relevance": "语义相关性",
+    "evidence_quality": "证据质量",
+    "mllm_vla_relevance": "MLLM/VLA 相关性",
+    "driving_relevance": "自动驾驶相关性",
+    "method_novelty": "方法新颖性",
     "relevance": "AI 相关性",
     "impact": "影响力",
     "source": "来源可信度",
@@ -132,6 +142,7 @@ def create_app(config_path: str = "") -> FastAPI:
             verified_only=not demo_mode,
             published_since=window.published_since,
             eligible_only=not demo_mode,
+            prompt_version=settings.llm.prompt_version if not demo_mode else "",
         )
         kind_items = database.list_items(
             kind=kind,
@@ -139,6 +150,7 @@ def create_app(config_path: str = "") -> FastAPI:
             verified_only=not demo_mode,
             published_since=window.published_since,
             eligible_only=not demo_mode,
+            prompt_version=settings.llm.prompt_version if not demo_mode else "",
         )
         categories = sorted({item["category"] for item in kind_items})
         source_checks = database.recent_source_checks()
@@ -160,6 +172,9 @@ def create_app(config_path: str = "") -> FastAPI:
                     verified_only=not demo_mode,
                     published_since=window.published_since,
                     eligible_only=not demo_mode,
+                    prompt_version=(
+                        settings.llm.prompt_version if not demo_mode else ""
+                    ),
                 ),
                 "runs": database.recent_runs(6),
                 "source_checks": source_checks,
@@ -192,6 +207,9 @@ def create_app(config_path: str = "") -> FastAPI:
             verified_only=verified and not demo_mode,
             published_since=window.published_since,
             eligible_only=verified and not demo_mode,
+            prompt_version=(
+                settings.llm.prompt_version if verified and not demo_mode else ""
+            ),
         )
         return JSONResponse(
             {
@@ -216,6 +234,21 @@ def create_app(config_path: str = "") -> FastAPI:
         checks = database.recent_source_checks()
         return JSONResponse({"count": len(checks), "sources": checks})
 
+    @app.get("/api/llm-usage")
+    async def api_llm_usage() -> JSONResponse:
+        local_date = datetime.now(timezone).date().isoformat()
+        usage = database.llm_usage_summary(local_date)
+        usage.update(
+            {
+                "model": settings.llm.model,
+                "reasoning_effort": settings.llm.reasoning_effort,
+                "daily_token_limit": settings.llm.daily_token_limit,
+                "daily_cost_limit_usd": settings.llm.daily_cost_limit_usd,
+                "prompt_version": settings.llm.prompt_version,
+            }
+        )
+        return JSONResponse(usage)
+
     @app.post("/api/items/{item_id}/feedback")
     async def feedback(item_id: int, request: Request) -> JSONResponse:
         try:
@@ -237,8 +270,15 @@ def create_app(config_path: str = "") -> FastAPI:
         return {
             "status": "ok",
             "version": __version__,
-            "stats": database.stats(verified_only=True, eligible_only=True),
+            "stats": database.stats(
+                verified_only=True,
+                eligible_only=True,
+                prompt_version=settings.llm.prompt_version,
+            ),
             "sources": database.recent_source_checks(),
+            "llm_usage": database.llm_usage_summary(
+                datetime.now(timezone).date().isoformat()
+            ),
         }
 
     return app

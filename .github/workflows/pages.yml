@@ -6,15 +6,6 @@ on:
     # Avoid the top of the hour, when scheduled Actions are more likely to queue.
     - cron: "37 8 * * *"
       timezone: "Asia/Shanghai"
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "config/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "setup.py"
-      - ".github/workflows/pages.yml"
 
 permissions:
   contents: read
@@ -26,7 +17,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -52,12 +43,27 @@ jobs:
             exit 1
           fi
 
+      - name: Require DeepSeek API secret
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "::error::Create the Actions secret DEEPSEEK_API_KEY before running this workflow."
+            exit 1
+          fi
+
       - name: Configure GitHub Pages
         id: pages
         uses: actions/configure-pages@v6
 
+      - name: Restore today's published DeepSeek usage
+        run: >-
+          daily-radar restore-usage
+          --url "${{ steps.pages.outputs.base_url }}/data/latest.json"
+
       - name: Collect verified news and papers
         env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
         run: daily-radar collect --kind all
 
@@ -81,6 +87,19 @@ jobs:
         with:
           path: site
           include-hidden-files: true
+
+      - name: Send daily email when SMTP secrets are configured
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        env:
+          DAILY_RADAR_EMAIL_USERNAME: ${{ secrets.DAILY_RADAR_EMAIL_USERNAME }}
+          DAILY_RADAR_EMAIL_AUTH_CODE: ${{ secrets.DAILY_RADAR_EMAIL_AUTH_CODE }}
+        run: |
+          if [ -z "$DAILY_RADAR_EMAIL_USERNAME" ] || [ -z "$DAILY_RADAR_EMAIL_AUTH_CODE" ]; then
+            echo "::notice::Email skipped. Configure DAILY_RADAR_EMAIL_USERNAME and DAILY_RADAR_EMAIL_AUTH_CODE to enable it."
+            exit 0
+          fi
+          daily-radar send-email --site-url "${{ steps.pages.outputs.base_url }}/"
 
   deploy:
     needs: build
