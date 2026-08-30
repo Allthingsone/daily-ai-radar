@@ -82,7 +82,9 @@ DeepSeek V4-Pro Thinking max 批量语义筛选
 
 如果全部来源不可用、DeepSeek Key 缺失、模型响应不合法或预算耗尽，构建会失败，Pages 不会被空页面覆盖，上一版成功页面仍在线。部分来源失败时，系统会继续处理可验证结果，并把失败记录展示在“来源健康”区域。
 
-每次 DeepSeek 调用都会保存输入、输出、推理、缓存 Token 和按官方峰谷价估算的费用。默认上限为每天 250,000 Token 与 1 美元，任一达到即停止。由于 GitHub Runner 每次都是新机器，工作流会先从现有 Pages 的 `data/latest.json` 恢复同一天累计量，避免手动重复运行重置本地限额。
+每次 DeepSeek 调用都会保存输入、输出、推理、缓存 Token 和按官方峰谷价估算的费用。默认上限为每天 250,000 Token 与 1 美元，任一达到即停止。由于 GitHub Runner 每次都是新机器，工作流会同时从现有 Pages 的 `data/latest.json` 与 Actions 当日状态缓存恢复累计量。状态缓存在采集失败后也会执行保存，因此手动重试不会把已计费的失败调用重新当成零用量。
+
+V4-Pro 的 Thinking `max` 会让推理 Token 与最终 JSON 共用输出额度。项目给单次调用最多 32,768 Token；如果仍以 `finish_reason=length` 截断，程序立即把候选批次拆成两半分别处理，而不是原样重试同一请求。每日 Token 与费用双限额仍优先约束实际可用的 `max_tokens`。
 
 ## 本地预览
 
@@ -102,7 +104,7 @@ python3 -m http.server 8765 --directory site
 - 定时运行可能因 GitHub 高负载略有延迟，所以选择了非整点时间。
 - GitHub 会在公开仓库连续 60 天没有仓库活动时自动停用定时工作流。若仓库长期不改动，需要在 Actions 页面重新启用；后续版本可增加轻量保活或历史归档策略。
 - 费用是根据官方公开单价和返回 Token 估算；最终扣费以 DeepSeek 控制台账单为准。
-- 失败运行在页面发布前消耗的少量 Token 无法由旧 Pages 快照恢复，因此建议为本项目使用独立 DeepSeek Key，并同时查看 DeepSeek 控制台用量。
+- Actions 状态缓存只保存 SQLite 数据库中的公开候选、筛选结果和用量记录，不包含 DeepSeek Key、邮箱授权码或 Prompt 正文；DeepSeek 控制台账单仍是最终费用依据。
 
 GitHub 的相关官方说明：
 

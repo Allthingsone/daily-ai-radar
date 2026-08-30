@@ -5,9 +5,9 @@
 1. 聚合全 AI 领域的新模型、新工具、新数据集与技术成果，并将同一事件的多个来源折叠到一起。
 2. 收集最新 MLLM/VLM/VLA 论文，但主 Feed 只接受同时以多模态模型和自动驾驶应用为实质核心的论文。
 
-当前版本是 **v0.5.0 DeepSeek 语义筛选版**。程序负责来源真实性、时间窗口、去重和 arXiv 身份校验；通过这些校验的候选统一交给 `deepseek-v4-pro` 的 Thinking `max` 模式判断是否入选、重要性、分类与中文摘要。关键词分数不再决定正式 Feed。
+当前版本是 **v0.5.1 DeepSeek 语义筛选版**。程序负责来源真实性、时间窗口、去重和 arXiv 身份校验；通过这些校验的候选统一交给 `deepseek-v4-pro` 的 Thinking `max` 模式判断是否入选、重要性、分类与中文摘要。关键词分数不再决定正式 Feed。
 
-## v0.5.0 已包含
+## v0.5.1 已包含
 
 - 15 个启用的 RSS/Atom 来源，包括官方博客、媒体、HN 发现源和 GitHub Releases；Anthropic 候选源因目前没有官方 RSS 而保留为禁用状态。
 - arXiv `cs.CV/cs.RO/cs.AI/cs.LG/cs.CL` 最新论文采集。
@@ -17,7 +17,8 @@
 - 固定使用 `deepseek-v4-pro`、Thinking 开启、`reasoning_effort=max`，不自动降级到 Flash 或硬编码评分。
 - 新闻、论文和系统 Prompt 独立存放在 `prompts/`，每条判断记录 Prompt 版本与 SHA-256。
 - 每次 API 调用记录输入、输出、推理、缓存 Token 与估算费用；每日 25 万 Token / 1 美元双限额。
-- GitHub Pages 显示当日 DeepSeek 用量；同一天重复运行会先从上一版 Pages 恢复累计量。
+- GitHub Pages 显示当日 DeepSeek 用量；同一天重复运行会从 Pages 与 Actions 当日状态缓存恢复累计量，失败调用也不会在下一次运行中丢失。
+- V4-Pro 最大思考使用 32,768 输出 Token 上限；若仍返回 `finish_reason=length`，程序会自动拆小候选批次，不会原样重复同一个截断请求。
 - 163 SMTP 定时邮件；同一个邮箱可同时作为发件和收件账号。
 - SQLite 历史库、收藏/已读/不相关反馈。
 - FastAPI Dashboard，以及 JSON、Markdown、RSS 导出。

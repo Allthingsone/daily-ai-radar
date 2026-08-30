@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 - 2026-08-30
+
+- Raised the V4-Pro output allowance from 8,192 to 32,768 tokens and the request timeout from 180 to 600 seconds for max-effort reasoning plus structured JSON.
+- Reduced default candidate batches and added recursive splitting when DeepSeek returns `finish_reason=length`, avoiding an identical paid retry.
+- Added validation feedback to non-truncation retries instead of sending the same prompt again.
+- Printed tracked tokens and estimated cost even when screening fails.
+- Added a same-day GitHub Actions state cache that is saved on failure, so billed failed-call usage is restored before another run and remains subject to the project caps.
+
 ## 0.5.0 - 2026-08-29
 
 - Replaced deterministic production selection with mandatory `deepseek-v4-pro` semantic screening in Thinking `max` mode.

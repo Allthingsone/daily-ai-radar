@@ -128,6 +128,18 @@ def _llm_usage_payload(settings: Settings, database: Database) -> dict:
     return usage
 
 
+def _print_llm_usage(settings: Settings, database: Database, *, stream=None) -> None:
+    usage = _llm_usage_payload(settings, database)
+    print(
+        f"[deepseek] model={usage['model']} thinking=max "
+        f"calls={usage['calls']} tokens={usage['total_tokens']}/"
+        f"{usage['daily_token_limit']} "
+        f"estimated_cost=${usage['estimated_cost_usd']:.6f}/"
+        f"${usage['daily_cost_limit_usd']:.2f}",
+        file=stream or sys.stdout,
+    )
+
+
 def main(argv: Iterable[str] = None) -> int:
     args = _parser().parse_args(list(argv) if argv is not None else None)
     settings = load_settings(args.config)
@@ -168,16 +180,11 @@ def main(argv: Iterable[str] = None) -> int:
             LLMUsageUnavailable,
         ) as exc:
             print(f"DeepSeek screening stopped: {exc}", file=sys.stderr)
+            _print_llm_usage(settings, database, stream=sys.stderr)
             return 2
         for summary in summaries:
             _print_run(summary)
-        usage = _llm_usage_payload(settings, database)
-        print(
-            f"[deepseek] model={usage['model']} thinking=max "
-            f"tokens={usage['total_tokens']}/{usage['daily_token_limit']} "
-            f"estimated_cost=${usage['estimated_cost_usd']:.6f}/"
-            f"${usage['daily_cost_limit_usd']:.2f}"
-        )
+        _print_llm_usage(settings, database)
         return 1 if summaries and all(summary.sources_ok == 0 for summary in summaries) else 0
     if args.command == "export":
         database.initialize()

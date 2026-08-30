@@ -148,6 +148,7 @@ class DeepSeekScreenerTests(unittest.TestCase):
             self.assertEqual(captured["body"]["model"], "deepseek-v4-pro")
             self.assertEqual(captured["body"]["thinking"], {"type": "enabled"})
             self.assertEqual(captured["body"]["reasoning_effort"], "max")
+            self.assertEqual(captured["body"]["max_tokens"], 32768)
             self.assertEqual(
                 captured["body"]["response_format"], {"type": "json_object"}
             )
@@ -157,6 +158,84 @@ class DeepSeekScreenerTests(unittest.TestCase):
             self.assertEqual(usage["total_tokens"], 1500)
             self.assertEqual(usage["reasoning_tokens"], 300)
             self.assertGreater(usage["estimated_cost_usd"], 0)
+
+    def test_length_truncation_splits_batch_without_identical_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            database.initialize()
+            calls = []
+
+            def payload(finish_reason, identifier=""):
+                content = ""
+                if finish_reason == "stop":
+                    content = json.dumps(
+                        {
+                            "items": [
+                                {
+                                    "id": identifier,
+                                    "selected": False,
+                                    "is_ai": True,
+                                    "is_concrete_release_or_result": False,
+                                    "importance_score": 20,
+                                    "confidence": 0.9,
+                                    "category": "not-relevant",
+                                    "summary_zh": "",
+                                    "why_important": "",
+                                    "evidence": [],
+                                    "tags": [],
+                                    "dimension_scores": {
+                                        "semantic_relevance": 40,
+                                        "novelty": 10,
+                                        "impact": 10,
+                                        "evidence_quality": 50,
+                                    },
+                                }
+                            ]
+                        }
+                    )
+                return {
+                    "id": f"response-{len(calls)}",
+                    "model": "deepseek-v4-pro",
+                    "choices": [
+                        {
+                            "finish_reason": finish_reason,
+                            "message": {"content": content},
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 100,
+                        "completion_tokens": 100,
+                        "total_tokens": 200,
+                    },
+                }
+
+            responses = [
+                payload("length"),
+                payload("stop", "n001a-000"),
+                payload("stop", "n001b-000"),
+            ]
+
+            def opener(request, timeout):
+                calls.append(json.loads(request.data.decode("utf-8")))
+                return FakeResponse(responses[len(calls) - 1])
+
+            screener = DeepSeekScreener(
+                llm_settings(max_retries=1),
+                database,
+                "Asia/Shanghai",
+                opener=opener,
+                clock=lambda: datetime(2026, 8, 29, tzinfo=timezone.utc),
+            )
+            screened = screener.screen([make_item(), make_item()], "news")
+
+            self.assertEqual(len(screened), 2)
+            self.assertEqual(len(calls), 3)
+            self.assertIn("n001a-000", calls[1]["messages"][1]["content"])
+            self.assertIn("n001b-000", calls[2]["messages"][1]["content"])
+            usage = database.llm_usage_summary("2026-08-29")
+            self.assertEqual(usage["total_tokens"], 600)
+            self.assertEqual(usage["failed_calls"], 1)
+            self.assertEqual(usage["successful_calls"], 2)
 
     def test_paper_cannot_pass_when_application_is_not_substantive(self):
         with tempfile.TemporaryDirectory() as directory:

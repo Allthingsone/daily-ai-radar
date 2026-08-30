@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "daily-ai-radar"
-version = "0.5.0"
+version = "0.5.1"
 description = "A transparent daily AI news and MLLM/VLA-for-autonomous-driving paper radar."
 readme = "README.md"
 requires-python = ">=3.9"

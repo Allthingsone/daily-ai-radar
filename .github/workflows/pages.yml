@@ -52,6 +52,21 @@ jobs:
             exit 1
           fi
 
+      - name: Compute Shanghai usage date
+        id: usage-date
+        shell: bash
+        run: echo "value=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore same-day radar state
+        uses: actions/cache/restore@v5
+        with:
+          path: data/daily_radar.db
+          key: >-
+            daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-${{ github.run_id }}-
+            daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-
+
       - name: Configure GitHub Pages
         id: pages
         uses: actions/configure-pages@v6
@@ -66,6 +81,14 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
         run: daily-radar collect --kind all
+
+      - name: Save same-day radar state, including failed-call usage
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: data/daily_radar.db
+          key: >-
+            daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Build static site
         run: >-

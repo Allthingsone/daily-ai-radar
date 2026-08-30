@@ -18,6 +18,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.llm.model, "deepseek-v4-pro")
         self.assertTrue(settings.llm.thinking_enabled)
         self.assertEqual(settings.llm.reasoning_effort, "max")
+        self.assertEqual(settings.llm.max_output_tokens, 32768)
+        self.assertEqual(settings.llm.news_batch_size, 8)
+        self.assertEqual(settings.llm.paper_batch_size, 6)
         self.assertTrue(settings.llm.news_prompt_path.is_file())
 
 

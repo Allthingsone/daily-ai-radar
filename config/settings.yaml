@@ -28,7 +28,7 @@ network:
   retry_backoff_seconds: 1.0
   # arXiv asks clients to identify themselves. Replace the placeholder before
   # scheduling this project on a public server.
-  user_agent: "DailyAIRadar/0.5.0 (contact: replace-with-your-email@example.com)"
+  user_agent: "DailyAIRadar/0.5.1 (contact: replace-with-your-email@example.com)"
 
 llm:
   # DeepSeek 是语义入选的唯一裁判；没有 Key 或调用失败时任务会停止，
@@ -40,10 +40,12 @@ llm:
   model: deepseek-v4-pro
   thinking_enabled: true
   reasoning_effort: max
-  timeout_seconds: 180
-  max_output_tokens: 8192
-  news_batch_size: 20
-  paper_batch_size: 12
+  # V4-Pro max 思考会与最终 JSON 共用输出额度。较大的上限避免推理完成前截断；
+  # 程序仍受下面的每日 Token / 费用硬上限约束，并会自动拆分截断批次。
+  timeout_seconds: 600
+  max_output_tokens: 32768
+  news_batch_size: 8
+  paper_batch_size: 6
   max_retries: 1
   daily_token_limit: 250000
   daily_cost_limit_usd: 1.00

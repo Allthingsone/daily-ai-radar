@@ -51,7 +51,7 @@ class PaperSettings:
 @dataclass(frozen=True)
 class NetworkSettings:
     timeout_seconds: int = 25
-    user_agent: str = "DailyAIRadar/0.5.0 (+https://github.com/your-name/daily-ai-radar)"
+    user_agent: str = "DailyAIRadar/0.5.1 (+https://github.com/your-name/daily-ai-radar)"
     retries: int = 2
     retry_backoff_seconds: float = 1.0
 
@@ -65,10 +65,10 @@ class LLMSettings:
     model: str = "deepseek-v4-pro"
     thinking_enabled: bool = True
     reasoning_effort: str = "max"
-    timeout_seconds: int = 180
-    max_output_tokens: int = 8192
-    news_batch_size: int = 20
-    paper_batch_size: int = 12
+    timeout_seconds: int = 600
+    max_output_tokens: int = 32768
+    news_batch_size: int = 8
+    paper_batch_size: int = 6
     max_retries: int = 1
     daily_token_limit: int = 250_000
     daily_cost_limit_usd: float = 1.0
@@ -176,17 +176,17 @@ def load_settings(path: str = "") -> Settings:
             timeout_seconds=int(
                 os.getenv(
                     "DAILY_RADAR_LLM_TIMEOUT_SECONDS",
-                    str(llm_raw.get("timeout_seconds", 180)),
+                    str(llm_raw.get("timeout_seconds", 600)),
                 )
             ),
             max_output_tokens=int(
                 os.getenv(
                     "DAILY_RADAR_LLM_MAX_OUTPUT_TOKENS",
-                    str(llm_raw.get("max_output_tokens", 8192)),
+                    str(llm_raw.get("max_output_tokens", 32768)),
                 )
             ),
-            news_batch_size=int(llm_raw.get("news_batch_size", 20)),
-            paper_batch_size=int(llm_raw.get("paper_batch_size", 12)),
+            news_batch_size=int(llm_raw.get("news_batch_size", 8)),
+            paper_batch_size=int(llm_raw.get("paper_batch_size", 6)),
             max_retries=int(llm_raw.get("max_retries", 1)),
             daily_token_limit=int(
                 os.getenv(

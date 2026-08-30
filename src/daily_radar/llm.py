@@ -65,6 +65,10 @@ class LLMResponseError(RuntimeError):
     pass
 
 
+class LLMOutputTruncated(LLMResponseError):
+    """The provider stopped before the final structured response was complete."""
+
+
 def _bounded_number(value: Any, minimum: float, maximum: float) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise LLMResponseError(f"expected a number, got {type(value).__name__}")
@@ -230,7 +234,8 @@ class DeepSeekScreener:
             raise LLMConfigurationError("LLM batch size must be positive")
         for offset in range(0, len(candidates), batch_size):
             batch = candidates[offset : offset + batch_size]
-            decisions = self._screen_batch(batch, kind, offset // batch_size + 1)
+            batch_label = f"{offset // batch_size + 1:03d}"
+            decisions = self._screen_batch(batch, kind, batch_label)
             for item, decision in zip(batch, decisions):
                 self._apply_decision(item, decision, kind)
         return candidates
@@ -252,16 +257,17 @@ class DeepSeekScreener:
         return summary
 
     def _screen_batch(
-        self, batch: Sequence[RadarItem], kind: str, batch_number: int
+        self, batch: Sequence[RadarItem], kind: str, batch_label: str
     ) -> List[Dict[str, Any]]:
         identifiers = [
-            f"{kind[0]}{batch_number:03d}-{index:03d}"
+            f"{kind[0]}{batch_label}-{index:03d}"
             for index in range(len(batch))
         ]
-        prompt = self._build_prompt(batch, identifiers, kind)
+        base_prompt = self._build_prompt(batch, identifiers, kind)
+        prompt = base_prompt
         last_error: Optional[Exception] = None
         for attempt in range(self.settings.max_retries + 1):
-            purpose = f"screen-{kind}-batch-{batch_number}-attempt-{attempt + 1}"
+            purpose = f"screen-{kind}-batch-{batch_label}-attempt-{attempt + 1}"
             try:
                 content = self._invoke(prompt, purpose, len(batch), kind)
                 decisions = self._parse_decisions(content, identifiers, kind)
@@ -269,8 +275,29 @@ class DeepSeekScreener:
                 return decisions
             except LLMBudgetExceeded:
                 raise
+            except LLMOutputTruncated as exc:
+                # Retrying an identical max-effort request usually consumes the
+                # same allowance and truncates again. Divide the work instead;
+                # all usage from the truncated request has already been recorded.
+                if len(batch) == 1:
+                    raise LLMOutputTruncated(
+                        f"DeepSeek output remained truncated for one {kind} "
+                        f"candidate: {exc}"
+                    ) from exc
+                midpoint = len(batch) // 2
+                return self._screen_batch(
+                    batch[:midpoint], kind, f"{batch_label}a"
+                ) + self._screen_batch(
+                    batch[midpoint:], kind, f"{batch_label}b"
+                )
             except (LLMRequestError, LLMResponseError) as exc:
                 last_error = exc
+                prompt = (
+                    base_prompt
+                    + "\n\n重试修正要求：上一次响应未通过程序校验。"
+                    + f"错误为：{exc}。请重新检查全部字段、候选 ID 和证据摘录，"
+                    + "仅返回完整 JSON。"
+                )
         raise LLMResponseError(
             f"DeepSeek could not produce a valid {kind} decision after "
             f"{self.settings.max_retries + 1} attempt(s): {last_error}"
@@ -455,7 +482,7 @@ class DeepSeekScreener:
             headers={
                 "Authorization": f"Bearer {self.settings.api_key}",
                 "Content-Type": "application/json",
-                "User-Agent": "DailyAIRadar/0.5.0",
+                "User-Agent": "DailyAIRadar/0.5.1",
             },
         )
         try:
@@ -502,6 +529,10 @@ class DeepSeekScreener:
         total_tokens = int(
             usage.get("total_tokens", prompt_tokens + completion_tokens) or 0
         )
+        try:
+            recorded_finish_reason = payload["choices"][0].get("finish_reason")
+        except (KeyError, IndexError, TypeError, AttributeError):
+            recorded_finish_reason = None
         cost = estimate_deepseek_cost(
             at=now,
             cache_hit_tokens=cache_hit_tokens,
@@ -527,19 +558,31 @@ class DeepSeekScreener:
                 "response_id": str(payload.get("id", "")),
                 "prompt_version": self.settings.prompt_version,
                 "prompt_sha256": self._prompt_sha256(kind),
-                "status": "success",
-                "error": "",
+                "status": (
+                    "success" if recorded_finish_reason == "stop" else "failed"
+                ),
+                "error": (
+                    ""
+                    if recorded_finish_reason == "stop"
+                    else f"finish_reason={recorded_finish_reason or 'missing'}"
+                ),
             }
         )
 
         try:
             choice = payload["choices"][0]
-            if choice.get("finish_reason") != "stop":
+            finish_reason = choice.get("finish_reason")
+            if finish_reason == "length":
+                raise LLMOutputTruncated(
+                    "finish_reason=length "
+                    f"at max_tokens={max_output}; output or context limit reached"
+                )
+            if finish_reason != "stop":
                 raise LLMResponseError(
-                    f"unexpected finish_reason={choice.get('finish_reason')}"
+                    f"unexpected finish_reason={finish_reason}"
                 )
             content = choice["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
             raise LLMResponseError(
                 "DeepSeek response is missing message content"
             ) from exc
