@@ -69,7 +69,85 @@ def llm_settings(**overrides):
     return LLMSettings(**values)
 
 
+def news_decision(category, **overrides):
+    value = {
+        "selected": True,
+        "is_ai": True,
+        "is_major_foundation_model": False,
+        "is_significant_product_tool_or_hardware": False,
+        "is_autonomous_driving_dataset_or_benchmark": False,
+        "is_important_research_result": False,
+        "is_community_trending": False,
+        "has_verifiable_heat_signal": False,
+        "importance_score": 80,
+        "confidence": 0.9,
+        "category": category,
+        "summary_zh": "社区正在讨论一项具有技术价值的 AI 议题。",
+        "why_important": "互动指标达到配置门槛。",
+        "evidence": ["multimodal reasoning model"],
+        "tags": [],
+        "dimension_scores": {
+            "semantic_relevance": 90,
+            "novelty": 70,
+            "impact": 80,
+            "community_heat": 85,
+            "evidence_quality": 75,
+        },
+    }
+    value.update(overrides)
+    return value
+
+
 class DeepSeekScreenerTests(unittest.TestCase):
+    def test_news_routes_enforce_the_user_specific_hard_gates(self):
+        routine_model = DeepSeekScreener._normalize_decision(
+            news_decision("model-release"), "news"
+        )
+        unrelated_dataset = DeepSeekScreener._normalize_decision(
+            news_decision("dataset-benchmark"), "news"
+        )
+        unheated_research = DeepSeekScreener._normalize_decision(
+            news_decision(
+                "research-result",
+                is_important_research_result=True,
+                has_verifiable_heat_signal=True,
+            ),
+            "news",
+            verified_heat_signal=False,
+        )
+
+        self.assertFalse(routine_model["selected"])
+        self.assertFalse(unrelated_dataset["selected"])
+        self.assertFalse(unheated_research["selected"])
+        self.assertFalse(
+            unheated_research["flags"]["has_verifiable_heat_signal"]
+        )
+
+    def test_community_route_requires_collector_verified_heat(self):
+        accepted = DeepSeekScreener._normalize_decision(
+            news_decision(
+                "community-trending",
+                is_community_trending=True,
+                has_verifiable_heat_signal=True,
+            ),
+            "news",
+            verified_heat_signal=True,
+        )
+        self.assertTrue(accepted["selected"])
+
+    def test_community_source_cannot_become_release_proof(self):
+        rejected = DeepSeekScreener._normalize_decision(
+            news_decision(
+                "model-release",
+                is_major_foundation_model=True,
+                has_verifiable_heat_signal=True,
+            ),
+            "news",
+            verified_heat_signal=True,
+            community_source=True,
+        )
+        self.assertFalse(rejected["selected"])
+
     def test_rejects_model_evidence_not_present_in_source_text(self):
         with self.assertRaises(LLMResponseError):
             DeepSeekScreener._validate_evidence(
@@ -88,7 +166,12 @@ class DeepSeekScreenerTests(unittest.TestCase):
                         "id": "n001-000",
                         "selected": True,
                         "is_ai": True,
-                        "is_concrete_release_or_result": True,
+                        "is_major_foundation_model": True,
+                        "is_significant_product_tool_or_hardware": False,
+                        "is_autonomous_driving_dataset_or_benchmark": False,
+                        "is_important_research_result": False,
+                        "is_community_trending": False,
+                        "has_verifiable_heat_signal": False,
                         "importance_score": 91,
                         "confidence": 0.95,
                         "category": "model-release",
@@ -102,6 +185,7 @@ class DeepSeekScreenerTests(unittest.TestCase):
                             "semantic_relevance": 98,
                             "novelty": 90,
                             "impact": 88,
+                            "community_heat": 0,
                             "evidence_quality": 85,
                         },
                     }
@@ -175,7 +259,12 @@ class DeepSeekScreenerTests(unittest.TestCase):
                                     "id": identifier,
                                     "selected": False,
                                     "is_ai": True,
-                                    "is_concrete_release_or_result": False,
+                                    "is_major_foundation_model": False,
+                                    "is_significant_product_tool_or_hardware": False,
+                                    "is_autonomous_driving_dataset_or_benchmark": False,
+                                    "is_important_research_result": False,
+                                    "is_community_trending": False,
+                                    "has_verifiable_heat_signal": False,
                                     "importance_score": 20,
                                     "confidence": 0.9,
                                     "category": "not-relevant",
@@ -187,6 +276,7 @@ class DeepSeekScreenerTests(unittest.TestCase):
                                         "semantic_relevance": 40,
                                         "novelty": 10,
                                         "impact": 10,
+                                        "community_heat": 0,
                                         "evidence_quality": 50,
                                     },
                                 }

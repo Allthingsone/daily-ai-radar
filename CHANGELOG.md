@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0 - 2026-08-30
+
+- Restricted model news to major foundation LLM or multimodal model releases and material upgrades.
+- Restricted dataset and benchmark news to autonomous-driving applications.
+- Required research-result news to be both important and backed by a collector-verified community heat signal.
+- Added a separate `community-trending` route for substantive, highly discussed AI topics.
+- Added the official Hacker News API adapter with points, comment counts, rank, and discussion URLs.
+- Added a Juejin AI hot-list adapter with rank, heat, views, likes, comments, favorites, and Schema.org publication-time verification.
+- Kept the CSDN hot-list adapter available but disabled it by default because CI-style article requests currently cannot reliably verify publication dates.
+- Restricted community-originated items to the `community-trending` route so a discussion post cannot become proof of an official release or research result.
+- Prevented DeepSeek from inventing heat: collector metadata is the final gate even when the model claims a topic is trending.
+- Preserved community metrics through event deduplication and displayed them on Pages as discussion signals rather than proof of fact.
+
 ## 0.5.1 - 2026-08-30
 
 - Raised the V4-Pro output allowance from 8,192 to 32,768 tokens and the request timeout from 180 to 600 seconds for max-effort reasoning plus structured JSON.

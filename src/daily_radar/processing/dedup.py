@@ -13,6 +13,28 @@ def _preferred(left: RadarItem, right: RadarItem) -> RadarItem:
     return left if left_rank <= right_rank else right
 
 
+def _merge_community_signals(target: RadarItem, *items: RadarItem) -> None:
+    signals = list(target.metadata.get("community_signals", []))
+    for item in items:
+        signals.extend(item.metadata.get("community_signals", []))
+    unique = []
+    seen = set()
+    for signal in signals:
+        if not isinstance(signal, dict):
+            continue
+        key = (
+            str(signal.get("platform", "")),
+            str(signal.get("discussion_url", "")),
+            str(signal.get("period", "")),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(dict(signal))
+    if unique:
+        target.metadata["community_signals"] = unique
+
+
 def deduplicate_exact(items: List[RadarItem]) -> List[RadarItem]:
     by_key: Dict[str, RadarItem] = {}
     for item in items:
@@ -23,6 +45,7 @@ def deduplicate_exact(items: List[RadarItem]) -> List[RadarItem]:
             continue
         winner = _preferred(current, item)
         loser = item if winner is current else current
+        _merge_community_signals(winner, loser)
         alternates = list(winner.metadata.get("alternate_sources", []))
         alternates.append(
             {
@@ -59,6 +82,7 @@ def cluster_news(items: List[RadarItem], threshold: float = 0.72) -> List[RadarI
     merged: List[RadarItem] = []
     for cluster in clusters:
         representative = cluster[0]
+        _merge_community_signals(representative, *cluster[1:])
         alternates = list(representative.metadata.get("alternate_sources", []))
         for member in cluster:
             if member is representative:

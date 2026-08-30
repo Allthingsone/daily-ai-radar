@@ -13,7 +13,7 @@
     <p class="eyebrow">INTELLIGENCE, NOT NOISE</p>
     <h1>每天真正面世的 AI 新模型与新成果，<br><em>以及严格相关的驾驶论文。</em></h1>
     <p class="hero-description">
-      新闻不限自动驾驶或多模态方向，但必须是具体的模型、工具、数据集发布或研究成果；论文必须同时属于 MLLM/VLA 与自动驾驶。正式结果由 DeepSeek V4-Pro Thinking max 语义筛选。
+      模型只收重大基座大模型/多模态模型，数据集与 Benchmark 只收自动驾驶，科研成果须同时重要且有可验证热度；另收录高价值社区讨论。论文必须同时属于 MLLM/VLA 与自动驾驶。
       每个结果都保留原始链接、身份验证方式、分项得分和入选证据。
     </p>
   </div>
@@ -80,7 +80,7 @@
   <section class="feed-header">
     <div>
       <span class="section-index">01</span>
-      <h2>{{ period_label }} · {{ 'AI 发布与成果' if kind == 'news' else 'MLLM / VLA4AD 论文' }}</h2>
+      <h2>{{ period_label }} · {{ 'AI 重大发布与热议' if kind == 'news' else 'MLLM / VLA4AD 论文' }}</h2>
     </div>
     <p>{{ items|length }} 条结果</p>
   </section>
@@ -124,6 +124,17 @@
           <a class="feed-link" href="{{ item.metadata.feed_url }}" target="_blank" rel="noopener noreferrer">查看采集 Feed</a>
           {% endif %}
         </div>
+
+        {% if item.metadata.community_signals %}
+        <div class="community-strip">
+          <div><b>社区热度</b><span>讨论信号，不代表帖内事实已获官方证实</span></div>
+          {% for signal in item.metadata.community_signals %}
+          <a class="{{ 'qualified' if signal.qualified else '' }}" href="{{ signal.discussion_url or item.url }}" target="_blank" rel="noopener noreferrer">
+            {{ signal.platform }}{% if signal.rank %} · 热榜 #{{ signal.rank }}{% endif %}{% if signal.points %} · 热度 {{ signal.points }}{% endif %}{% if signal.views %} · {{ signal.views }} 浏览{% endif %}{% if signal.likes %} · {{ signal.likes }} 点赞{% endif %}{% if signal.comments %} · {{ signal.comments }} 评论{% endif %}{% if signal.favorites %} · {{ signal.favorites }} 收藏{% endif %}{% if signal.qualified %} · 达标{% endif %} ↗
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
 
         {% if item.kind == 'paper' %}
         <div class="paper-facts">

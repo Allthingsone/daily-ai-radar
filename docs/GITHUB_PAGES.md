@@ -4,7 +4,7 @@
 
 ## 需要准备的账号与设置
 
-需要 GitHub 账号和 DeepSeek API 账号；邮件推送还需要已开启 SMTP 的 163 邮箱。新闻 RSS 与 arXiv 采集本身不需要 API Key。
+需要 GitHub 账号和 DeepSeek API 账号；邮件推送还需要已开启 SMTP 的 163 邮箱。新闻 RSS、Hacker News、掘金与 arXiv 采集本身不需要 API Key。知乎、CSDN 和微信公众号本版未启用，因此当前部署不需要新增任何社区账号或 Secret。
 
 推荐创建公开仓库，例如 `daily-ai-radar`。GitHub Free 可以为公开仓库使用 Pages；私有仓库发布 Pages 取决于 GitHub 付费方案。
 
@@ -58,7 +58,7 @@ https://YOUR_NAME.github.io/daily-ai-radar/
         ↓
 运行全部离线测试
         ↓
-抓取 RSS / Atom / GitHub Releases / arXiv
+抓取 RSS / Atom / GitHub Releases / HN / 掘金 AI 热榜 / arXiv
         ↓
 校验链接、来源域名和 arXiv ID
         ↓
@@ -73,12 +73,14 @@ DeepSeek V4-Pro Thinking max 批量语义筛选
 
 页面上的开关是只读的前端筛选：
 
-- `AI 发布与成果 / MLLM-VLA 驾驶论文`
+- `AI 重大发布与热议 / MLLM-VLA 驾驶论文`
 - `精选 / 全部`
 - 论文 `今日 / 近 4 日`
 - 标题、摘要、作者和标签搜索
 
 其中“今日”按 `Asia/Shanghai` 自然日计算。旧论文可以出现在“近 4 日”，但不会填入“今日”。
+
+社区热议当前来自 Hacker News 官方 API 和掘金人工智能热榜；榜单排名与互动量会显示在条目卡片中。CSDN 适配器因原文日期在 CI 环境中无法稳定核验而默认停用。详细来源矩阵和知乎/公众号接入边界见 [`COMMUNITY_SOURCES.md`](COMMUNITY_SOURCES.md)。
 
 如果全部来源不可用、DeepSeek Key 缺失、模型响应不合法或预算耗尽，构建会失败，Pages 不会被空页面覆盖，上一版成功页面仍在线。部分来源失败时，系统会继续处理可验证结果，并把失败记录展示在“来源健康”区域。
 

@@ -31,6 +31,7 @@ class VerificationResult:
         return self.status in {
             "verified-primary",
             "verified-publisher",
+            "verified-community",
             "verified-link",
             "access-restricted",
         }
@@ -54,6 +55,8 @@ def _status_for(source: SourceConfig, match: bool, reachable: bool) -> str:
         return "unverified"
     if match and source.tier == 1:
         return "verified-primary"
+    if match and source.type == "community":
+        return "verified-community"
     if match:
         return "verified-publisher"
     if source.allow_external_links:

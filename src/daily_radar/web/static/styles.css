@@ -118,6 +118,12 @@ select { padding: 9px 12px 9px 8px; }
 .provenance-strip a { color: var(--cyan); }
 .provenance-strip .feed-link { margin-left: auto; color: #a8b0b5; }
 .provenance-strip code { color: var(--lime); font: 9px ui-monospace, monospace; }
+.community-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; padding: 10px 12px; background: rgba(200,255,92,.04); border: 1px solid rgba(200,255,92,.14); border-radius: 9px; color: var(--muted); font-size: 9px; }
+.community-strip > div { display: inline-flex; flex-direction: column; gap: 2px; margin-right: 4px; }
+.community-strip > div b { color: #dfe6e9; letter-spacing: .06em; }
+.community-strip > div span { color: #7f8b91; }
+.community-strip a { padding: 4px 7px; border: 1px solid var(--line); border-radius: 5px; color: #aab3b8; }
+.community-strip a.qualified { color: var(--lime); border-color: rgba(200,255,92,.26); }
 .paper-facts { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; color: var(--muted); font-size: 10px; }
 .paper-facts b { color: #c7cdd1; margin-right: 5px; font-weight: 600; }
 .paper-facts a { color: var(--cyan); }

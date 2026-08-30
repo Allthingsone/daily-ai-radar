@@ -116,15 +116,61 @@ sources:
     allowed_domains: [venturebeat.com]
     tags: [industry, enterprise]
 
-  - id: hnrss-ai
-    name: Hacker News · AI discovery
-    url: https://hnrss.org/newest?q=AI
+  - id: hacker-news-top
+    name: Hacker News · Top discussions
+    url: https://hacker-news.firebaseio.com/v0/topstories.json
     tier: 3
     type: community
-    focus: 0.45
-    allowed_domains: [news.ycombinator.com, hnrss.org]
+    adapter: hackernews
+    focus: 0.6
+    max_items: 30
+    community_platform: Hacker News
+    community_rank_limit: 30
+    # A story is a verified heat signal when it is in the current Top 30 and
+    # has either 100 points or 30 comments. These values are sent to DeepSeek;
+    # the model is never asked to guess popularity from headline wording.
+    community_min_points: 100
+    community_min_comments: 30
+    allowed_domains: [hacker-news.firebaseio.com, news.ycombinator.com]
     allow_external_links: true
-    tags: [community, discovery]
+    tags: [community, discussion, overseas]
+
+  - id: csdn-hot
+    name: CSDN · 实时热榜
+    enabled: false
+    url: "https://blog.csdn.net/phoenix/web/blog/hot-rank?page=0&pageSize=20&type="
+    tier: 3
+    type: community
+    adapter: csdn-hot
+    focus: 0.65
+    max_items: 20
+    community_platform: CSDN
+    community_rank_limit: 20
+    # Kept as an implemented optional adapter, but disabled by default: CSDN's
+    # article pages currently return HTTP 521 to CI-style automated requests,
+    # so the collector cannot reliably verify the real publication timestamp.
+    community_min_points: 1000
+    community_min_comments: 10
+    allowed_domains: [blog.csdn.net]
+    tags: [community, discussion, china]
+
+  - id: juejin-ai-hot
+    name: 掘金 · 人工智能热榜
+    url: "https://api.juejin.cn/content_api/v1/content/article_rank?category_id=6809637773935378440&type=hot"
+    tier: 3
+    type: community
+    adapter: juejin-hot
+    focus: 0.7
+    max_items: 20
+    community_platform: 掘金
+    community_rank_limit: 20
+    # The list supplies hot rank and interaction counters. The collector also
+    # reads Schema.org datePublished from each article; it never uses run time
+    # as a substitute for an article's publication date.
+    community_min_points: 300
+    community_min_comments: 10
+    allowed_domains: [api.juejin.cn, juejin.cn]
+    tags: [community, discussion, china, ai]
 
   - id: transformers-releases
     name: Transformers Releases

@@ -39,7 +39,7 @@ class StaticSiteTests(unittest.TestCase):
             news.metadata["llm_screening"] = {
                 "selected": True,
                 "rule_version": LLM_SCREENING_RULE_VERSION,
-                "prompt_version": "2026-08-29-v1",
+                "prompt_version": "2026-08-30-v2",
             }
             paper_today.published_at = fixed_now - timedelta(hours=1)
             paper_today.metadata["provenance"] = {
@@ -59,7 +59,7 @@ class StaticSiteTests(unittest.TestCase):
             unverified.metadata["llm_screening"] = {
                 "selected": True,
                 "rule_version": LLM_SCREENING_RULE_VERSION,
-                "prompt_version": "2026-08-29-v1",
+                "prompt_version": "2026-08-30-v2",
             }
 
             for item in (news, paper_today, paper_old, unverified):
@@ -83,6 +83,8 @@ class StaticSiteTests(unittest.TestCase):
             self.assertNotIn(unverified.title, html)
             self.assertIn('data-today="true"', html)
             self.assertIn('data-today="false"', html)
+            self.assertIn("社区热度", html)
+            self.assertIn("讨论信号，不代表帖内事实已获官方证实", html)
 
             payload = json.loads(
                 (output / "data" / "latest.json").read_text(encoding="utf-8")

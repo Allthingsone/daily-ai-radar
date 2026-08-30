@@ -2,17 +2,19 @@
 
 一个可解释、可本地运行的每日情报项目：
 
-1. 聚合全 AI 领域的新模型、新工具、新数据集与技术成果，并将同一事件的多个来源折叠到一起。
+1. 聚合重大 AI 基座模型、重要工具/硬件、自动驾驶数据集与 Benchmark、重要且热议的科研成果，以及有可验证互动量的社区热议，并将同一事件的多个来源折叠到一起。
 2. 收集最新 MLLM/VLM/VLA 论文，但主 Feed 只接受同时以多模态模型和自动驾驶应用为实质核心的论文。
 
-当前版本是 **v0.5.1 DeepSeek 语义筛选版**。程序负责来源真实性、时间窗口、去重和 arXiv 身份校验；通过这些校验的候选统一交给 `deepseek-v4-pro` 的 Thinking `max` 模式判断是否入选、重要性、分类与中文摘要。关键词分数不再决定正式 Feed。
+当前版本是 **v0.6.0 社区热度与严格新闻门槛版**。程序负责来源真实性、时间窗口、社区互动量、去重和 arXiv 身份校验；通过这些校验的候选统一交给 `deepseek-v4-pro` 的 Thinking `max` 模式判断是否入选、重要性、分类与中文摘要。关键词分数不再决定正式 Feed，模型也不能凭空声明某条内容“很热”。
 
-## v0.5.1 已包含
+## v0.6.0 已包含
 
-- 15 个启用的 RSS/Atom 来源，包括官方博客、媒体、HN 发现源和 GitHub Releases；Anthropic 候选源因目前没有官方 RSS 而保留为禁用状态。
+- 16 个启用来源，包括官方博客、媒体、GitHub Releases、Hacker News 官方 API 与掘金人工智能热榜；Anthropic 和 CSDN 候选源因当前无法稳定核验发布时间而保留为禁用状态。
 - arXiv `cs.CV/cs.RO/cs.AI/cs.LG/cs.CL` 最新论文采集。
 - URL 规范化、精确去重和相似标题事件聚类。
-- 新闻不限制自动驾驶或多模态方向，由 DeepSeek 判断是否属于重要的新模型、新工具、新数据集或技术成果。
+- 新闻方向不限，但模型发布只收重大基座模型；数据集/Benchmark 只收自动驾驶；科研成果必须同时重要且具有采集器验证的社区热度。
+- 独立的“社区热议”类别，当前使用 Hacker News 积分/评论与掘金 AI 热榜的热度/浏览/点赞/评论/收藏；页面明确提示这些指标是讨论信号，不是一手事实证明。
+- 社区热度由结构化互动量和配置门槛确定，DeepSeek 只能解释这些信号，不能从标题语气或自身记忆猜测热度。
 - 论文由 DeepSeek 判断 MLLM/VLM/VLA 和自动驾驶是否均为实质核心，而不是简单关键词共现。
 - 固定使用 `deepseek-v4-pro`、Thinking 开启、`reasoning_effort=max`，不自动降级到 Flash 或硬编码评分。
 - 新闻、论文和系统 Prompt 独立存放在 `prompts/`，每条判断记录 Prompt 版本与 SHA-256。
@@ -87,11 +89,11 @@ daily-radar status
 
 ```mermaid
 flowchart LR
-    A[RSS / Atom / arXiv] --> B[规范化]
+    A[RSS / Atom / 社区榜单 API / arXiv] --> B[规范化]
     B --> C[URL 去重与新闻事件聚类]
     C --> V[链接可达性 + 来源域名验证]
     V --> D[DeepSeek V4-Pro / Thinking max]
-    D --> E[新闻发布/成果语义判断]
+    D --> E[严格新闻路线 + 社区热议判断]
     D --> F[MLLM/VLA × 自动驾驶语义判断]
     E --> H[精选结果]
     F --> H
@@ -105,7 +107,8 @@ DeepSeek 是正式 Feed 的唯一语义裁判。Key 缺失、模型配置被降�
 ## 配置
 
 - [`config/settings.yaml`](config/settings.yaml)：时间窗口、arXiv 分类、DeepSeek、预算、Prompt 路径和 SMTP 主机设置。
-- [`config/sources.yaml`](config/sources.yaml)：新闻来源、来源等级、类型和主题聚焦度。
+- [`config/sources.yaml`](config/sources.yaml)：新闻来源、采集适配器、来源等级和社区热度门槛。
+- [`docs/COMMUNITY_SOURCES.md`](docs/COMMUNITY_SOURCES.md)：社区来源能力、真实性边界及知乎/公众号未直接启用的原因。
 - [`prompts/news_screening.md`](prompts/news_screening.md)：新闻筛选 Prompt。
 - [`prompts/paper_screening.md`](prompts/paper_screening.md)：论文筛选 Prompt。
 - [`prompts/system.md`](prompts/system.md)：共同的安全与事实边界 Prompt。
@@ -147,13 +150,17 @@ python -m unittest discover -s tests -v
 
 ### 新闻
 
-程序先验证来源和发布时间，再让 DeepSeek 根据整段标题与摘要判断：
+程序先验证来源、发布时间及可用的社区互动量，再让 DeepSeek 根据完整候选判断：
 
 ```text
-新闻主 Feed = 具体且重要的 AI 新发布 OR 有明确依据的新技术/研究成果
+新闻主 Feed = 重大基座模型发布
+              OR 重要 AI 产品/工具/硬件发布
+              OR 自动驾驶数据集/Benchmark 发布
+              OR 同时重要且有可验证热度的科研成果
+              OR 有可验证热度且具实质价值的社区讨论
 ```
 
-观点评论、教程、旧闻回顾、传闻、融资并购、司法监管、泛使用讨论以及 Sponsored/付费软文不进入主 Feed。最终 `selected`、重要性 0–100、证据、摘要和分类均来自 DeepSeek 的结构化判断。
+小型任务模型和例行模型更新、非自动驾驶数据集/Benchmark、没有合格热度信号的科研成果，以及观点评论、教程、旧闻、传闻、融资并购、司法监管和 Sponsored/付费软文不进入主 Feed。最终语义判断来自 DeepSeek；`has_verifiable_heat_signal` 会由程序再次与采集器指标核对，模型无法伪造。社区原帖只能作为 `community-trending` 入选，不能直接充当模型、产品或科研成果正式发布的一手证明。
 
 同一事件合并时，页面优先展示等级更高的一手来源，并只在“同一事件”区域保留通过验证的其他报道链接。
 
@@ -175,7 +182,7 @@ python -m unittest discover -s tests -v
 
 ### “真实性”的技术边界
 
-v0.2 能确认：
+当前版本能确认：
 
 - Feed/API 本身是否成功访问。
 - 条目是否具有合法且可访问的 HTTP(S) 原始链接。
@@ -183,8 +190,9 @@ v0.2 能确认：
 - 论文 arXiv ID 是否与官方记录一致。
 - Feed/arXiv 是否提供可解析的原始发布时间；缺失、格式无效或异常未来时间不会进入当期结果。
 - 同一新闻是否存在多个已验证来源。
+- Hacker News / 掘金是否确实给出达到配置门槛的榜单排名或互动量。
 
-这些检查保证来源可追溯，并不能自动证明报道中的每个事实都正确。事实层真实性仍需要一手公告、多源交叉印证或人工复核；系统不会把单个社区帖子标记为“官方已证实”。
+这些检查保证来源与热度可追溯，并不能自动证明报道或社区帖子中的每个事实都正确。事实层真实性仍需要一手公告、多源交叉印证或人工复核；系统不会把单个社区帖子标记为“官方已证实”。
 
 详细设计和下一阶段候选见 [`docs/ROADMAP.md`](docs/ROADMAP.md)。
 
@@ -241,7 +249,7 @@ PYTHONPYCACHEPREFIX=/tmp/daily-radar-pycache \
 
 - arXiv 元数据只通过其公开 API 获取，并校验 ID 与官方摘要页；定时部署前请在 `user_agent` 中换成真实联系邮箱。
 - 项目默认保存论文摘要页和 PDF 链接，不重新托管论文 PDF。
-- RSS 正文仅保存 Feed 已公开提供的摘要，不绕过登录、付费墙或 robots 限制。
+- RSS 正文仅保存 Feed 已公开提供的摘要；社区采集只读取公开榜单、原帖元数据和互动计数，不绕过登录、付费墙或访问控制。
 - API Key 不写入数据库、导出文件或日志。
 - 邮箱地址和 SMTP 授权码不写入仓库或页面；Actions 日志不打印收件地址。
 - DeepSeek 只接收来源公开提供的标题、摘要、发布日期和来源标签，不接收邮箱配置。

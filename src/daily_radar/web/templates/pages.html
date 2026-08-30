@@ -40,6 +40,20 @@
       {% if item.kind == 'paper' and item.external_id %}<code>arXiv:{{ item.external_id }}</code>{% endif %}
     </div>
 
+    {% if item.community_signals %}
+    <div class="community-strip">
+      <div>
+        <b>社区热度</b>
+        <span>讨论信号，不代表帖内事实已获官方证实</span>
+      </div>
+      {% for signal in item.community_signals %}
+      <a class="{% if signal.qualified %}qualified{% endif %}" href="{{ signal.url or item.url }}" target="_blank" rel="noopener noreferrer">
+        {{ signal.platform }} · {{ signal.metrics }}{% if signal.qualified %} · 达标{% endif %} ↗
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     {% if item.kind == 'paper' %}
     <div class="paper-facts">
       {% if item.authors %}
@@ -97,7 +111,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
-    <meta name="description" content="每日 AI 新模型与技术成果，以及 MLLM/VLA 自动驾驶论文雷达。所有结果保留可核验来源。">
+    <meta name="description" content="每日重大 AI 基座模型、自动驾驶数据集、重要热议成果与社区讨论，以及 MLLM/VLA 自动驾驶论文雷达。">
     {% if site_url %}<link rel="canonical" href="{{ site_url }}">{% endif %}
     <link rel="alternate" type="application/rss+xml" title="Daily AI Radar RSS" href="./feed.xml">
     <title>Daily AI Radar · 每日 AI 情报</title>
@@ -125,9 +139,9 @@
         <div class="hero-grid">
           <div class="hero-copy">
             <p class="eyebrow">INTELLIGENCE, NOT NOISE</p>
-            <h1>追踪真正面世的 AI 新模型与成果，<em>以及当天的驾驶智能论文。</em></h1>
+            <h1>追踪重大 AI 发布与社区热议，<em>以及当天的驾驶智能论文。</em></h1>
             <p class="hero-description">
-              新闻覆盖整个 AI 领域，但必须是具体模型、工具、数据集发布或研究成果；论文必须同时属于 MLLM/VLA 与自动驾驶。语义入选由 DeepSeek V4-Pro Thinking max 完成，每条记录都保留原始链接与验证凭据。
+              模型只收重大基座大模型/多模态模型，数据集与 Benchmark 只收自动驾驶，科研成果须同时重要且有可验证热度；另收录高价值社区讨论。论文必须同时属于 MLLM/VLA 与自动驾驶。
             </p>
           </div>
           <aside class="snapshot-card">
@@ -140,7 +154,7 @@
 
         <div class="stats-grid">
           <div><span>本期条目</span><strong>{{ stats.total }}</strong><small>{{ news_window.label }}新闻 + 今日论文</small></div>
-          <div><span>AI 发布与成果</span><strong>{{ stats.news }}</strong><small>{{ news_window.label }}</small></div>
+          <div><span>AI 重大发布与热议</span><strong>{{ stats.news }}</strong><small>{{ news_window.label }}</small></div>
           <div><span>今日领域论文</span><strong>{{ stats.papers_today }}</strong><small>{{ paper_today_window.local_date }}</small></div>
           <div class="accent"><span>当前健康来源</span><strong>{{ healthy_sources }}/{{ source_checks|length }}</strong><small>{% if stale_sources %}{{ stale_sources }} 个状态超过 36 小时{% else %}最近一次来源检查{% endif %}</small></div>
         </div>
@@ -160,7 +174,7 @@
           <div class="kind-tabs" role="tablist" aria-label="内容类型">
             <button type="button" class="active" data-kind-button="news" role="tab" aria-selected="true">
               <span class="tab-index">N</span>
-              <span><b>AI 发布与成果</b><small>News intelligence</small></span>
+              <span><b>AI 重大发布与热议</b><small>News intelligence</small></span>
               <em>{{ news|length }}</em>
             </button>
             <button type="button" data-kind-button="paper" role="tab" aria-selected="false">
@@ -191,7 +205,7 @@
 
           <section class="content-panel" data-kind-panel="news">
             <header class="section-heading">
-              <div><span>01</span><h2>AI 新发布与技术成果</h2></div>
+              <div><span>01</span><h2>AI 重大发布与社区热议</h2></div>
               <p><b data-result-count>{{ news|length }}</b> 条结果 · {{ news_window.label }}</p>
             </header>
             <div class="item-list">

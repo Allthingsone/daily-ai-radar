@@ -790,6 +790,43 @@ a {
   font-size: 9px;
 }
 
+.community-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 10px 12px;
+  color: var(--dim);
+  background: rgba(184, 245, 66, 0.035);
+  border-left: 2px solid rgba(184, 245, 66, 0.42);
+  font-size: 9px;
+}
+
+.community-strip > div {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.community-strip b {
+  color: #cbd4cf;
+  letter-spacing: 0.07em;
+}
+
+.community-strip a {
+  padding: 4px 7px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  text-decoration: none;
+}
+
+.community-strip a.qualified {
+  color: var(--acid);
+  border-color: rgba(184, 245, 66, 0.25);
+}
+
 .provenance-kicker {
   color: #aebbb4;
   font-weight: 700;
@@ -1397,6 +1434,11 @@ summary:focus-visible {
 
   .provenance-strip a {
     max-width: 100%;
+  }
+
+  .community-strip {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .card-footer > span {

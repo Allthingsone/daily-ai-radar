@@ -781,6 +781,7 @@ def news_category_label(value: str) -> str:
         "open-source-tool": "开源项目/工具发布",
         "product-tool-release": "产品/API 发布",
         "hardware-robotics": "AI 硬件/机器人成果",
+        "community-trending": "社区热议",
         "research": "研究成果",
         "agents-devtools": "Agent/开发工具",
         "industry": "产业",

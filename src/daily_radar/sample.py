@@ -86,8 +86,19 @@ def build_demo_items() -> List[RadarItem]:
             "selected": True,
             "rule_version": LLM_SCREENING_RULE_VERSION,
             "provider": "demo",
-            "prompt_version": "2026-08-29-v1",
+            "prompt_version": "2026-08-30-v2",
         }
+    news[0].metadata["community_signals"] = [
+        {
+            "platform": "Hacker News",
+            "signal_type": "points-comments-rank",
+            "rank": 4,
+            "points": 156,
+            "comments": 48,
+            "qualified": True,
+            "discussion_url": "https://example.com/daily-ai-radar-demo/discussion",
+        }
+    ]
 
     paper_specs = [
         (
@@ -142,7 +153,7 @@ def build_demo_items() -> List[RadarItem]:
                 "selected": True,
                 "rule_version": LLM_SCREENING_RULE_VERSION,
                 "provider": "demo",
-                "prompt_version": "2026-08-29-v1",
+                "prompt_version": "2026-08-30-v2",
             }
             papers.append(item)
     return news + papers

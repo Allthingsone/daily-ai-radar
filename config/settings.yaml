@@ -5,7 +5,8 @@ app:
   sources_path: config/sources.yaml
 
 news:
-  # 新闻不限自动驾驶/多模态，但必须是具体的 AI 发布或技术成果事件。
+  # 新闻不限方向，但模型只收重大基座模型，数据集/Benchmark 只收自动驾驶，
+  # 科研成果必须同时重要且有可验证社区热度；另收录高价值社区热议。
   lookback_hours: 48
   max_important: 15
   cluster_similarity: 0.72
@@ -28,7 +29,7 @@ network:
   retry_backoff_seconds: 1.0
   # arXiv asks clients to identify themselves. Replace the placeholder before
   # scheduling this project on a public server.
-  user_agent: "DailyAIRadar/0.5.1 (contact: replace-with-your-email@example.com)"
+  user_agent: "DailyAIRadar/0.6.0 (contact: replace-with-your-email@example.com)"
 
 llm:
   # DeepSeek 是语义入选的唯一裁判；没有 Key 或调用失败时任务会停止，
@@ -49,7 +50,7 @@ llm:
   max_retries: 1
   daily_token_limit: 250000
   daily_cost_limit_usd: 1.00
-  prompt_version: 2026-08-29-v1
+  prompt_version: 2026-08-30-v2
   system_prompt_path: prompts/system.md
   news_prompt_path: prompts/news_screening.md
   paper_prompt_path: prompts/paper_screening.md

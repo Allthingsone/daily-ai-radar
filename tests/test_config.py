@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from daily_radar.config import load_settings
+from daily_radar.config import load_settings, load_sources
 
 
 class ConfigTests(unittest.TestCase):
@@ -22,6 +22,15 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.llm.news_batch_size, 8)
         self.assertEqual(settings.llm.paper_batch_size, 6)
         self.assertTrue(settings.llm.news_prompt_path.is_file())
+
+    def test_ranked_community_sources_use_dedicated_adapters(self):
+        settings = load_settings()
+        sources = {source.id: source for source in load_sources(settings.sources_path)}
+        self.assertEqual(sources["hacker-news-top"].adapter, "hackernews")
+        self.assertEqual(sources["juejin-ai-hot"].adapter, "juejin-hot")
+        self.assertNotIn("csdn-hot", sources)
+        self.assertGreater(sources["hacker-news-top"].community_min_points, 0)
+        self.assertGreater(sources["juejin-ai-hot"].community_rank_limit, 0)
 
 
 if __name__ == "__main__":

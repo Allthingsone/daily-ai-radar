@@ -23,6 +23,7 @@ SOURCE_HEALTH_MAX_AGE = timedelta(hours=36)
 VERIFICATION_LABELS = {
     "verified-primary": "一手来源已验证",
     "verified-publisher": "媒体来源已验证",
+    "verified-community": "社区原帖已验证",
     "verified-link": "外链可访问",
     "access-restricted": "来源限制自动访问",
     "unverified": "未验证",
@@ -33,6 +34,7 @@ COMPONENT_LABELS = {
     "novelty": "新颖性",
     "ai_relevance": "AI 相关性",
     "impact": "影响力",
+    "community_heat": "社区热度",
     "evidence_quality": "证据质量",
     "mllm_vla_relevance": "MLLM/VLA 相关性",
     "driving_relevance": "自动驾驶相关性",
@@ -82,6 +84,53 @@ def _category_label(item: Dict[str, Any]) -> str:
     return paper_category_label(str(item.get("category", "other")))
 
 
+def _nonnegative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _prepared_community_signals(metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+    prepared: List[Dict[str, Any]] = []
+    for raw in metadata.get("community_signals", []):
+        if not isinstance(raw, dict) or not raw.get("platform"):
+            continue
+        platform = str(raw.get("platform", ""))[:80]
+        parts = []
+        rank = _nonnegative_int(raw.get("rank"))
+        points = _nonnegative_int(raw.get("points"))
+        comments = _nonnegative_int(raw.get("comments"))
+        views = _nonnegative_int(raw.get("views"))
+        likes = _nonnegative_int(raw.get("likes"))
+        favorites = _nonnegative_int(raw.get("favorites"))
+        if rank:
+            parts.append(f"热榜 #{rank}")
+        if points:
+            parts.append(
+                f"{points} points" if platform == "Hacker News" else f"热度 {points}"
+            )
+        if views:
+            parts.append(f"{views} 浏览")
+        if likes:
+            parts.append(f"{likes} 点赞")
+        if comments:
+            parts.append(f"{comments} 评论")
+        if favorites:
+            parts.append(f"{favorites} 收藏")
+        prepared.append(
+            {
+                "platform": platform,
+                "metrics": " · ".join(parts) or "平台热榜记录",
+                "qualified": raw.get("qualified") is True,
+                "url": str(raw.get("discussion_url", "")),
+            }
+        )
+    return prepared[:6]
+
+
 def _prepare_item(
     item: Dict[str, Any], timezone_name: str, today_urls: set
 ) -> Dict[str, Any]:
@@ -90,6 +139,7 @@ def _prepare_item(
     provenance = dict(metadata.get("provenance") or {})
     prepared["metadata"] = metadata
     prepared["provenance"] = provenance
+    prepared["community_signals"] = _prepared_community_signals(metadata)
     prepared["category_label"] = _category_label(item)
     prepared["published_display"] = _format_datetime(
         str(item.get("published_at", "")), timezone_name

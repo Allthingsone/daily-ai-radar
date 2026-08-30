@@ -65,6 +65,7 @@ COMPONENT_LABELS = {
 VERIFICATION_LABELS = {
     "verified-primary": "一手来源已验证",
     "verified-publisher": "发布域名已验证",
+    "verified-community": "社区原帖已验证",
     "verified-link": "外链可访问",
     "access-restricted": "站点限制自动访问",
     "unverified": "暂未验证",

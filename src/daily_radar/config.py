@@ -29,6 +29,12 @@ class SourceConfig:
     tags: List[str] = field(default_factory=list)
     allowed_domains: List[str] = field(default_factory=list)
     allow_external_links: bool = False
+    adapter: str = "rss"
+    max_items: int = 30
+    community_platform: str = ""
+    community_rank_limit: int = 0
+    community_min_points: int = 0
+    community_min_comments: int = 0
 
 
 @dataclass(frozen=True)
@@ -51,7 +57,7 @@ class PaperSettings:
 @dataclass(frozen=True)
 class NetworkSettings:
     timeout_seconds: int = 25
-    user_agent: str = "DailyAIRadar/0.5.1 (+https://github.com/your-name/daily-ai-radar)"
+    user_agent: str = "DailyAIRadar/0.6.0 (+https://github.com/your-name/daily-ai-radar)"
     retries: int = 2
     retry_backoff_seconds: float = 1.0
 
@@ -72,7 +78,7 @@ class LLMSettings:
     max_retries: int = 1
     daily_token_limit: int = 250_000
     daily_cost_limit_usd: float = 1.0
-    prompt_version: str = "2026-08-29-v1"
+    prompt_version: str = "2026-08-30-v2"
     system_prompt_path: Path = PROJECT_ROOT / "prompts" / "system.md"
     news_prompt_path: Path = PROJECT_ROOT / "prompts" / "news_screening.md"
     paper_prompt_path: Path = PROJECT_ROOT / "prompts" / "paper_screening.md"
@@ -200,7 +206,7 @@ def load_settings(path: str = "") -> Settings:
                     str(llm_raw.get("daily_cost_limit_usd", 1.0)),
                 )
             ),
-            prompt_version=str(llm_raw.get("prompt_version", "2026-08-29-v1")),
+            prompt_version=str(llm_raw.get("prompt_version", "2026-08-30-v2")),
             system_prompt_path=_resolve_project_path(
                 str(llm_raw.get("system_prompt_path", "prompts/system.md"))
             ),

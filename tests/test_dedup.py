@@ -27,9 +27,18 @@ class DedupTests(unittest.TestCase):
     def test_exact_duplicate_prefers_primary_source(self):
         media = news("New AI model", "https://example.com/a?utm_source=x", "Media", 2)
         official = news("New AI model", "https://example.com/a", "Official", 1)
+        media.metadata["community_signals"] = [
+            {
+                "platform": "Hacker News",
+                "discussion_url": "https://news.ycombinator.com/item?id=1",
+                "qualified": True,
+                "points": 150,
+            }
+        ]
         result = deduplicate_exact([media, official])
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].source_name, "Official")
+        self.assertTrue(result[0].metadata["community_signals"][0]["qualified"])
 
     def test_story_cluster_preserves_alternate_sources(self):
         first = news(
@@ -51,4 +60,3 @@ class DedupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

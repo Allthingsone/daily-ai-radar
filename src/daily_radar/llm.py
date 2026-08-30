@@ -32,6 +32,7 @@ NEWS_CATEGORIES = {
     "dataset-benchmark",
     "research-result",
     "hardware-robotics",
+    "community-trending",
     "not-relevant",
 }
 PAPER_CATEGORIES = {
@@ -103,6 +104,46 @@ def _clean_string_list(value: Any, maximum_items: int, maximum_length: int) -> L
         if len(result) >= maximum_items:
             break
     return result
+
+
+def _nonnegative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _community_signals(item: RadarItem) -> List[Dict[str, Any]]:
+    result: List[Dict[str, Any]] = []
+    for raw in item.metadata.get("community_signals", []):
+        if not isinstance(raw, dict):
+            continue
+        platform = _clean_string(raw.get("platform"), 80)
+        if not platform:
+            continue
+        signal = {
+            "platform": platform,
+            "signal_type": _clean_string(raw.get("signal_type"), 80),
+            "rank": _nonnegative_int(raw.get("rank")),
+            "points": _nonnegative_int(raw.get("points")),
+            "comments": _nonnegative_int(raw.get("comments")),
+            "views": _nonnegative_int(raw.get("views")),
+            "likes": _nonnegative_int(raw.get("likes")),
+            "favorites": _nonnegative_int(raw.get("favorites")),
+            "qualified": raw.get("qualified") is True,
+            "discussion_url": _clean_string(raw.get("discussion_url"), 1000),
+            "period": _clean_string(raw.get("period"), 80),
+        }
+        result.append(signal)
+        if len(result) >= 6:
+            break
+    return result
+
+
+def _has_verifiable_heat_signal(item: RadarItem) -> bool:
+    return any(signal["qualified"] for signal in _community_signals(item))
 
 
 def _pricing_tier(at: datetime) -> str:
@@ -270,7 +311,7 @@ class DeepSeekScreener:
             purpose = f"screen-{kind}-batch-{batch_label}-attempt-{attempt + 1}"
             try:
                 content = self._invoke(prompt, purpose, len(batch), kind)
-                decisions = self._parse_decisions(content, identifiers, kind)
+                decisions = self._parse_decisions(content, identifiers, kind, batch)
                 self._validate_evidence(batch, decisions)
                 return decisions
             except LLMBudgetExceeded:
@@ -334,8 +375,17 @@ class DeepSeekScreener:
                 "published_at": item.published_at.isoformat(),
                 "source_name": item.source_name,
                 "source_tier": item.source_tier,
+                "source_type": item.source_type,
+                "source_tags": item.tags[:12],
                 "verified_source_status": provenance.get("status", ""),
             }
+            if kind == "news":
+                entry.update(
+                    {
+                        "has_verifiable_heat_signal": _has_verifiable_heat_signal(item),
+                        "community_signals": _community_signals(item),
+                    }
+                )
             if kind == "paper":
                 entry.update(
                     {
@@ -352,7 +402,15 @@ class DeepSeekScreener:
                     "id": identifiers[0],
                     "selected": False,
                     **(
-                        {"is_ai": True, "is_concrete_release_or_result": False}
+                        {
+                            "is_ai": True,
+                            "is_major_foundation_model": False,
+                            "is_significant_product_tool_or_hardware": False,
+                            "is_autonomous_driving_dataset_or_benchmark": False,
+                            "is_important_research_result": False,
+                            "is_community_trending": False,
+                            "has_verifiable_heat_signal": False,
+                        }
                         if kind == "news"
                         else {
                             "is_mllm_vla": True,
@@ -372,6 +430,7 @@ class DeepSeekScreener:
                             "semantic_relevance": 0,
                             "novelty": 0,
                             "impact": 0,
+                            "community_heat": 0,
                             "evidence_quality": 0,
                         }
                         if kind == "news"
@@ -482,7 +541,7 @@ class DeepSeekScreener:
             headers={
                 "Authorization": f"Bearer {self.settings.api_key}",
                 "Content-Type": "application/json",
-                "User-Agent": "DailyAIRadar/0.5.1",
+                "User-Agent": "DailyAIRadar/0.6.0",
             },
         )
         try:
@@ -607,7 +666,11 @@ class DeepSeekScreener:
         )
 
     def _parse_decisions(
-        self, content: str, identifiers: Sequence[str], kind: str
+        self,
+        content: str,
+        identifiers: Sequence[str],
+        kind: str,
+        batch: Sequence[RadarItem],
     ) -> List[Dict[str, Any]]:
         cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
         try:
@@ -630,11 +693,27 @@ class DeepSeekScreener:
         if set(by_id) != set(identifiers):
             raise LLMResponseError("DeepSeek changed, omitted, or added candidate ids")
         return [
-            self._normalize_decision(by_id[identifier], kind)
-            for identifier in identifiers
+            self._normalize_decision(
+                by_id[identifier],
+                kind,
+                verified_heat_signal=(
+                    _has_verifiable_heat_signal(item) if kind == "news" else False
+                ),
+                community_source=(
+                    kind == "news" and item.source_type == "community"
+                ),
+            )
+            for identifier, item in zip(identifiers, batch)
         ]
 
-    def _normalize_decision(self, raw: Dict[str, Any], kind: str) -> Dict[str, Any]:
+    @staticmethod
+    def _normalize_decision(
+        raw: Dict[str, Any],
+        kind: str,
+        *,
+        verified_heat_signal: bool = False,
+        community_source: bool = False,
+    ) -> Dict[str, Any]:
         selected = _required_bool(raw.get("selected"), "selected")
         score = _bounded_number(raw.get("importance_score"), 0, 100)
         confidence = _bounded_number(raw.get("confidence"), 0, 1)
@@ -646,16 +725,66 @@ class DeepSeekScreener:
         if kind == "news":
             flags = {
                 "is_ai": _required_bool(raw.get("is_ai"), "is_ai"),
-                "is_concrete_release_or_result": _required_bool(
-                    raw.get("is_concrete_release_or_result"),
-                    "is_concrete_release_or_result",
+                "is_major_foundation_model": _required_bool(
+                    raw.get("is_major_foundation_model"),
+                    "is_major_foundation_model",
                 ),
+                "is_significant_product_tool_or_hardware": _required_bool(
+                    raw.get("is_significant_product_tool_or_hardware"),
+                    "is_significant_product_tool_or_hardware",
+                ),
+                "is_autonomous_driving_dataset_or_benchmark": _required_bool(
+                    raw.get("is_autonomous_driving_dataset_or_benchmark"),
+                    "is_autonomous_driving_dataset_or_benchmark",
+                ),
+                "is_important_research_result": _required_bool(
+                    raw.get("is_important_research_result"),
+                    "is_important_research_result",
+                ),
+                "is_community_trending": _required_bool(
+                    raw.get("is_community_trending"),
+                    "is_community_trending",
+                ),
+                # The model must acknowledge the supplied metric, but it cannot
+                # create one: collector metadata remains the final authority.
+                "has_verifiable_heat_signal": _required_bool(
+                    raw.get("has_verifiable_heat_signal"),
+                    "has_verifiable_heat_signal",
+                )
+                and verified_heat_signal,
             }
-            selected = selected and all(flags.values()) and category != "not-relevant"
+            route_gate = {
+                "model-release": flags["is_major_foundation_model"],
+                "product-tool-release": flags[
+                    "is_significant_product_tool_or_hardware"
+                ],
+                "open-source-tool": flags[
+                    "is_significant_product_tool_or_hardware"
+                ],
+                "hardware-robotics": flags[
+                    "is_significant_product_tool_or_hardware"
+                ],
+                "dataset-benchmark": flags[
+                    "is_autonomous_driving_dataset_or_benchmark"
+                ],
+                "research-result": flags["is_important_research_result"]
+                and flags["has_verifiable_heat_signal"],
+                "community-trending": flags["is_community_trending"]
+                and flags["has_verifiable_heat_signal"],
+                "not-relevant": False,
+            }[category]
+            selected = selected and flags["is_ai"] and route_gate
+            # A community post proves that a discussion exists, not that the
+            # release/result claimed in the post is true. When an official or
+            # publisher item is deduplicated with a community item, that item
+            # keeps the stronger source and may still use the merged heat data.
+            if community_source:
+                selected = selected and category == "community-trending"
             dimension_names = (
                 "semantic_relevance",
                 "novelty",
                 "impact",
+                "community_heat",
                 "evidence_quality",
             )
         else:
@@ -758,6 +887,8 @@ class DeepSeekScreener:
             reasons.append("来源验证：链接可访问且匹配一手来源域名")
         elif status == "verified-publisher":
             reasons.append("来源验证：链接可访问且匹配发布媒体域名")
+        elif status == "verified-community":
+            reasons.append("来源验证：社区原帖可访问；互动量仅作热度信号")
         elif status == "verified-link":
             reasons.append("来源验证：社区发现链接可访问")
         elif status == "verified-arxiv-api":

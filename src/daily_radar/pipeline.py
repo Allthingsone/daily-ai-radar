@@ -5,8 +5,14 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 from zoneinfo import ZoneInfo
 
-from .collectors import ArxivCollector, RSSCollector
-from .config import Settings, load_sources
+from .collectors import (
+    ArxivCollector,
+    CSDNHotCollector,
+    HackerNewsCollector,
+    JuejinHotCollector,
+    RSSCollector,
+)
+from .config import Settings, SourceConfig, load_sources
 from .db import Database
 from .llm import DeepSeekScreener
 from .models import CollectionResult, RadarItem, RunSummary
@@ -23,6 +29,17 @@ class RadarPipeline:
             settings.llm, self.database, settings.timezone
         )
 
+    def _news_collector(self, source: SourceConfig):
+        if source.adapter == "hackernews":
+            return HackerNewsCollector(source, self.settings.network)
+        if source.adapter == "csdn-hot":
+            return CSDNHotCollector(source, self.settings.network)
+        if source.adapter == "juejin-hot":
+            return JuejinHotCollector(source, self.settings.network)
+        if source.adapter != "rss":
+            raise ValueError(f"Unsupported source adapter: {source.adapter}")
+        return RSSCollector(source, self.settings.network)
+
     def collect_news(self) -> RunSummary:
         self.screener.ensure_ready()
         started = datetime.now(timezone.utc)
@@ -32,7 +49,7 @@ class RadarPipeline:
         workers = min(6, max(1, len(sources)))
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(RSSCollector(source, self.settings.network).collect): source
+                executor.submit(self._news_collector(source).collect): source
                 for source in sources
             }
             for future in as_completed(futures):
@@ -47,7 +64,7 @@ class RadarPipeline:
                 recovered.append(result)
                 continue
             source = source_map[result.source_id]
-            retry_result = RSSCollector(source, self.settings.network).collect()
+            retry_result = self._news_collector(source).collect()
             recovered.append(retry_result)
         results = recovered
 
