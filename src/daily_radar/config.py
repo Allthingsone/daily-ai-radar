@@ -92,7 +92,7 @@ class LLMSettings:
     paper_triage_abstract_chars: int = 480
     paper_triage_max_output_tokens: int = 8192
     max_retries: int = 1
-    daily_token_limit: int = 250_000
+    daily_token_limit: int = 500_000
     daily_cost_limit_usd: float = 1.0
     prompt_version: str = "2026-08-31-v3"
     system_prompt_path: Path = PROJECT_ROOT / "prompts" / "system.md"
@@ -223,7 +223,7 @@ def load_settings(path: str = "") -> Settings:
             daily_token_limit=int(
                 os.getenv(
                     "DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT",
-                    str(llm_raw.get("daily_token_limit", 250_000)),
+                    str(llm_raw.get("daily_token_limit", 500_000)),
                 )
             ),
             daily_cost_limit_usd=float(

@@ -19,7 +19,7 @@
 - 分别保存 arXiv 首次发布时间、最后更新时间和版本号；每日入口只处理首次发布时间位于当天的论文，不把旧论文版本更新伪装成今日新论文。
 - 固定使用 `deepseek-v4-pro`；新闻与论文严格复筛开启 Thinking `max`，论文高召回初筛关闭 Thinking，不自动降级到 Flash 或硬编码评分。
 - 新闻、论文初筛、论文复筛和系统 Prompt 独立存放在 `prompts/`，每条判断记录 Prompt 版本与 SHA-256。
-- 每次 API 调用记录输入、输出、推理、缓存 Token 与估算费用，并按新闻、论文初筛、论文复筛展示阶段用量；每日 25 万 Token / 1 美元双限额。
+- 每次 API 调用记录输入、输出、推理、缓存 Token 与估算费用，并按新闻、论文初筛、论文复筛展示阶段用量；每日 50 万 Token / 1 美元双限额。
 - GitHub Pages 显示当日 DeepSeek 用量；同一天重复运行会从 Pages 与 Actions 当日状态缓存恢复累计量，失败调用也不会在下一次运行中丢失。
 - V4-Pro 最大思考使用 32,768 输出 Token 上限；若仍返回 `finish_reason=length`，程序会自动拆小候选批次，不会原样重复同一个截断请求。
 - 163 SMTP 定时邮件；同一个邮箱可同时作为发件和收件账号。
@@ -189,7 +189,7 @@ python -m unittest discover -s tests -v
 
 “今日论文”按公告批次转换后的 `Asia/Shanghai` 日期判断，而不是错误地要求作者首次提交时间也落在北京时间当天。页面同时保留并展示官方首次提交时间；`updated` 与版本号用于区分后续版本，旧论文更新不会进入当日候选。SQLite 中已有的旧结果仍可出现在“近 4 日”或“历史”视图；如果今天没有通过三重门槛的论文，页面明确显示 0 条。
 
-默认 25 万 Token / 1 美元预算适用于一般日量。若当天分类论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 调高上限，页面会继续按阶段记录实际用量。
+默认 50 万 Token / 1 美元预算用于降低高论文量日的 Token 上限失败概率。若当天分类论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 继续调整上限，页面会按阶段记录实际用量。
 
 ### “真实性”的技术边界
 

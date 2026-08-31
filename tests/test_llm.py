@@ -486,6 +486,7 @@ class DeepSeekScreenerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")
             database.initialize()
+            settings = llm_settings()
             database.record_llm_usage(
                 {
                     "occurred_at": "2026-08-29T00:00:00+00:00",
@@ -493,14 +494,14 @@ class DeepSeekScreenerTests(unittest.TestCase):
                     "provider": "deepseek",
                     "model": "deepseek-v4-pro",
                     "purpose": "existing",
-                    "total_tokens": 249900,
+                    "total_tokens": settings.daily_token_limit - 100,
                     "estimated_cost_usd": 0.1,
                     "status": "success",
                 }
             )
             called = []
             screener = DeepSeekScreener(
-                llm_settings(),
+                settings,
                 database,
                 "Asia/Shanghai",
                 opener=lambda request, timeout: called.append(request),

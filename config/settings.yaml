@@ -59,7 +59,7 @@ llm:
   paper_triage_abstract_chars: 480
   paper_triage_max_output_tokens: 8192
   max_retries: 1
-  daily_token_limit: 250000
+  daily_token_limit: 500000
   daily_cost_limit_usd: 1.00
   prompt_version: 2026-08-31-v3
   system_prompt_path: prompts/system.md

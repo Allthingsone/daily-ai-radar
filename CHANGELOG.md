@@ -7,7 +7,7 @@
 - Preserved first-publication time, last-update time, arXiv version number, and initial-versus-updated record metadata; only papers first published in the current Asia/Shanghai day enter the daily pipeline.
 - Added a V4-Pro non-thinking, high-recall triage pass over every verified daily paper using compact abstract excerpts.
 - Kept full-abstract final paper selection on V4-Pro Thinking `max` with the existing MLLM/VLA × autonomous-driving × substantive-application hard gate.
-- Kept the 250k-token / USD 1 default daily caps; exhaustion fails closed before database publication, Pages deployment, or email instead of emitting a partially screened digest.
+- Raised the default daily Token cap to 500k while keeping the USD 1 cost cap; exhaustion still fails closed before database publication, Pages deployment, or email instead of emitting a partially screened digest.
 - Added per-run stage counts and per-stage LLM usage for news, paper triage, and paper final screening so a zero-result day can be audited.
 - Shifted the five backup triggers to 08:10–09:30 Asia/Shanghai so both US daylight-saving and standard-time 20:00 arXiv announcements are covered; too-early attempts stop before LLM calls.
 - Added offline coverage for all-page arXiv collection, date-only queries, version metadata, two-stage model parameters, usage breakdown, and pipeline stage counts.

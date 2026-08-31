@@ -23,6 +23,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.llm.paper_batch_size, 6)
         self.assertEqual(settings.llm.paper_triage_batch_size, 80)
         self.assertEqual(settings.llm.paper_triage_abstract_chars, 480)
+        self.assertEqual(settings.llm.daily_token_limit, 500_000)
         self.assertEqual(settings.papers.page_size, 200)
         self.assertEqual(settings.papers.page_delay_seconds, 3.0)
         self.assertTrue(settings.llm.news_prompt_path.is_file())
