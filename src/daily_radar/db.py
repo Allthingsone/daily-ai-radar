@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS runs (
     important INTEGER NOT NULL,
     sources_ok INTEGER NOT NULL,
     sources_failed INTEGER NOT NULL,
-    errors_json TEXT NOT NULL
+    errors_json TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS source_checks (
@@ -186,6 +187,14 @@ class Database:
                 connection.execute(
                     "ALTER TABLE llm_usage ADD COLUMN call_count INTEGER NOT NULL DEFAULT 1"
                 )
+            run_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(runs)").fetchall()
+            }
+            if "details_json" not in run_columns:
+                connection.execute(
+                    "ALTER TABLE runs ADD COLUMN details_json TEXT NOT NULL DEFAULT '{}'"
+                )
 
     def upsert_item(self, item: RadarItem) -> int:
         now = datetime.now(timezone.utc).isoformat()
@@ -272,8 +281,8 @@ class Database:
                 """
                 INSERT INTO runs (
                     kind, started_at, finished_at, fetched, accepted, important,
-                    sources_ok, sources_failed, errors_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    sources_ok, sources_failed, errors_json, details_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     summary.kind,
@@ -285,6 +294,7 @@ class Database:
                     summary.sources_ok,
                     summary.sources_failed,
                     _dumps(summary.errors),
+                    _dumps(summary.details),
                 ),
             )
             return int(cursor.lastrowid)
@@ -404,6 +414,43 @@ class Database:
         )
         result["local_date"] = local_date
         return result
+
+    def llm_usage_breakdown(self, local_date: str) -> List[Dict[str, Any]]:
+        """Aggregate usage by pipeline stage without exposing prompts."""
+
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    CASE
+                        WHEN purpose LIKE 'triage-paper-%' THEN 'paper_triage'
+                        WHEN purpose LIKE 'screen-paper-%' THEN 'paper_final'
+                        WHEN purpose LIKE 'screen-news-%' THEN 'news'
+                        ELSE 'carry_forward_or_other'
+                    END AS stage,
+                    SUM(call_count) AS calls,
+                    SUM(request_items) AS request_items,
+                    SUM(total_tokens) AS total_tokens,
+                    SUM(estimated_cost_usd) AS estimated_cost_usd
+                FROM llm_usage
+                WHERE local_date = ?
+                GROUP BY stage
+                ORDER BY stage
+                """,
+                (local_date,),
+            ).fetchall()
+        return [
+            {
+                "stage": str(row["stage"]),
+                "calls": int(row["calls"] or 0),
+                "request_items": int(row["request_items"] or 0),
+                "total_tokens": int(row["total_tokens"] or 0),
+                "estimated_cost_usd": round(
+                    float(row["estimated_cost_usd"] or 0), 6
+                ),
+            }
+            for row in rows
+        ]
 
     def recent_llm_usage(self, limit: int = 20) -> List[Dict[str, Any]]:
         with self.connect() as connection:
@@ -558,6 +605,7 @@ class Database:
         for row in rows:
             item = dict(row)
             item["errors"] = _loads(item.pop("errors_json"), [])
+            item["details"] = _loads(item.pop("details_json", "{}"), {})
             result.append(item)
         return result
 

@@ -101,7 +101,7 @@
         <div class="card-meta">
           <span class="category">{{ item|category_label }}</span>
           <span>{{ item.source_name }}</span>
-          <span>发布时间 {{ item.published_at|localtime }}</span>
+          <span>{% if item.kind == 'paper' %}公告批次{% else %}发布时间{% endif %} {{ item.published_at|localtime }}</span>
           {% if item.metadata.demo %}<span class="demo-label">DEMO</span>{% endif %}
           {% if provenance.status %}
           <span class="verification-label verification-{{ provenance.status }}">{{ verification_labels.get(provenance.status, provenance.status) }}</span>
@@ -140,6 +140,8 @@
         <div class="paper-facts">
           {% if item.authors %}<span><b>作者</b> {{ item.authors[:4]|join(' · ') }}{% if item.authors|length > 4 %} et al.{% endif %}</span>{% endif %}
           {% if item.categories %}<span><b>分类</b> {{ item.categories|join(' / ') }}</span>{% endif %}
+          {% if item.metadata.arxiv_first_submitted_at %}<span><b>首次提交</b> {{ item.metadata.arxiv_first_submitted_at|localtime }}</span>{% endif %}
+          {% if item.metadata.arxiv_version_number %}<span><b>当前版本</b> v{{ item.metadata.arxiv_version_number }}</span>{% endif %}
           {% if item.metadata.code_url %}<a href="{{ item.metadata.code_url }}" target="_blank" rel="noopener">↗ Code</a>{% endif %}
           {% if item.metadata.pdf_url %}<a href="{{ item.metadata.pdf_url }}" target="_blank" rel="noopener">↗ PDF</a>{% endif %}
         </div>

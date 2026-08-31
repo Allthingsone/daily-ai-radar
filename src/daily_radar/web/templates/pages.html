@@ -19,7 +19,7 @@
     <div class="card-meta">
       <span class="category">{{ item.category_label }}</span>
       <span>{{ item.source_name }}</span>
-      <time datetime="{{ item.published_at }}">{{ item.published_display }}</time>
+      <time datetime="{{ item.published_at }}">{% if item.kind == 'paper' %}公告 {{ item.published_display }}{% else %}{{ item.published_display }}{% endif %}</time>
       {% if item.provenance.status %}
       <span class="verification verification-{{ item.provenance.status }}">
         <i></i>{{ item.verification_label }}
@@ -60,6 +60,8 @@
       <span><b>作者</b> {{ item.authors[:4]|join(' · ') }}{% if item.authors|length > 4 %} et al.{% endif %}</span>
       {% endif %}
       {% if item.categories %}<span><b>分类</b> {{ item.categories|join(' / ') }}</span>{% endif %}
+      {% if item.metadata.arxiv_first_submitted_at %}<span><b>首次提交</b> {{ item.arxiv_first_submitted_display }}</span>{% endif %}
+      {% if item.metadata.arxiv_version_number %}<span><b>当前版本</b> v{{ item.metadata.arxiv_version_number }}</span>{% endif %}
       {% if item.metadata.pdf_url %}<a href="{{ item.metadata.pdf_url }}" target="_blank" rel="noopener noreferrer">PDF ↗</a>{% endif %}
       {% if item.metadata.code_url %}<a href="{{ item.metadata.code_url }}" target="_blank" rel="noopener noreferrer">Code ↗</a>{% endif %}
     </div>
@@ -248,7 +250,17 @@
                 {% for run in runs %}
                 <article>
                   <span class="run-kind">{{ run.kind }}</span>
-                  <div><strong>{{ run.finished_display }}</strong><small>抓取 {{ run.fetched }} · 入选 {{ run.accepted }} · 精选 {{ run.important }}</small></div>
+                  <div>
+                    <strong>{{ run.finished_display }}</strong>
+                    <small>抓取 {{ run.fetched }} · 入选 {{ run.accepted }} · 精选 {{ run.important }}</small>
+                    {% if run.details %}
+                    {% if run.kind == 'paper' %}
+                    <small class="run-stages">当日 {{ run.details.daily_query_items }} → 验证 {{ run.details.verified_new_submissions }} → 初筛候选 {{ run.details.triage_candidates }} → 严格复筛 {{ run.details.strict_screened }} → 入选 {{ run.details.accepted }}</small>
+                    {% else %}
+                    <small class="run-stages">时间窗 {{ run.details.within_time_window }} → 聚类 {{ run.details.clustered_candidates }} → 验证 {{ run.details.verified_candidates }} → 模型筛选 {{ run.details.llm_screened }} → 入选 {{ run.details.accepted }}</small>
+                    {% endif %}
+                    {% endif %}
+                  </div>
                   <span class="run-status {{ 'warn' if run.sources_failed else 'ok' }}">{{ run.sources_failed }} FAILED</span>
                 </article>
                 {% endfor %}

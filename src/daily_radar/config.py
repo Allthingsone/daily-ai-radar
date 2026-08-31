@@ -47,17 +47,30 @@ class NewsSettings:
 @dataclass(frozen=True)
 class PaperSettings:
     lookback_hours: int = 96
-    max_results: int = 150
+    # arXiv's max_results is a page size, not a safe total-result limit.  The
+    # collector keeps paging until every result in the announcement query is read.
+    page_size: int = 200
+    page_delay_seconds: float = 3.0
     max_important: int = 20
     categories: List[str] = field(
-        default_factory=lambda: ["cs.CV", "cs.RO", "cs.AI", "cs.LG", "cs.CL"]
+        default_factory=lambda: [
+            "cs.CV",
+            "cs.RO",
+            "cs.AI",
+            "cs.LG",
+            "cs.CL",
+            "cs.SY",
+            "eess.SY",
+            "eess.IV",
+            "stat.ML",
+        ]
     )
 
 
 @dataclass(frozen=True)
 class NetworkSettings:
     timeout_seconds: int = 25
-    user_agent: str = "DailyAIRadar/0.6.0 (+https://github.com/your-name/daily-ai-radar)"
+    user_agent: str = "DailyAIRadar/0.7.0 (+https://github.com/your-name/daily-ai-radar)"
     retries: int = 2
     retry_backoff_seconds: float = 1.0
 
@@ -75,12 +88,16 @@ class LLMSettings:
     max_output_tokens: int = 32768
     news_batch_size: int = 8
     paper_batch_size: int = 6
+    paper_triage_batch_size: int = 80
+    paper_triage_abstract_chars: int = 480
+    paper_triage_max_output_tokens: int = 8192
     max_retries: int = 1
     daily_token_limit: int = 250_000
     daily_cost_limit_usd: float = 1.0
-    prompt_version: str = "2026-08-30-v2"
+    prompt_version: str = "2026-08-31-v3"
     system_prompt_path: Path = PROJECT_ROOT / "prompts" / "system.md"
     news_prompt_path: Path = PROJECT_ROOT / "prompts" / "news_screening.md"
+    paper_triage_prompt_path: Path = PROJECT_ROOT / "prompts" / "paper_triage.md"
     paper_prompt_path: Path = PROJECT_ROOT / "prompts" / "paper_screening.md"
 
 
@@ -193,6 +210,15 @@ def load_settings(path: str = "") -> Settings:
             ),
             news_batch_size=int(llm_raw.get("news_batch_size", 8)),
             paper_batch_size=int(llm_raw.get("paper_batch_size", 6)),
+            paper_triage_batch_size=int(
+                llm_raw.get("paper_triage_batch_size", 80)
+            ),
+            paper_triage_abstract_chars=int(
+                llm_raw.get("paper_triage_abstract_chars", 480)
+            ),
+            paper_triage_max_output_tokens=int(
+                llm_raw.get("paper_triage_max_output_tokens", 8192)
+            ),
             max_retries=int(llm_raw.get("max_retries", 1)),
             daily_token_limit=int(
                 os.getenv(
@@ -206,12 +232,19 @@ def load_settings(path: str = "") -> Settings:
                     str(llm_raw.get("daily_cost_limit_usd", 1.0)),
                 )
             ),
-            prompt_version=str(llm_raw.get("prompt_version", "2026-08-30-v2")),
+            prompt_version=str(llm_raw.get("prompt_version", "2026-08-31-v3")),
             system_prompt_path=_resolve_project_path(
                 str(llm_raw.get("system_prompt_path", "prompts/system.md"))
             ),
             news_prompt_path=_resolve_project_path(
                 str(llm_raw.get("news_prompt_path", "prompts/news_screening.md"))
+            ),
+            paper_triage_prompt_path=_resolve_project_path(
+                str(
+                    llm_raw.get(
+                        "paper_triage_prompt_path", "prompts/paper_triage.md"
+                    )
+                )
             ),
             paper_prompt_path=_resolve_project_path(
                 str(llm_raw.get("paper_prompt_path", "prompts/paper_screening.md"))

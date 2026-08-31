@@ -86,7 +86,7 @@ def build_demo_items() -> List[RadarItem]:
             "selected": True,
             "rule_version": LLM_SCREENING_RULE_VERSION,
             "provider": "demo",
-            "prompt_version": "2026-08-30-v2",
+            "prompt_version": "2026-08-31-v3",
         }
     news[0].metadata["community_signals"] = [
         {
@@ -153,7 +153,7 @@ def build_demo_items() -> List[RadarItem]:
                 "selected": True,
                 "rule_version": LLM_SCREENING_RULE_VERSION,
                 "provider": "demo",
-                "prompt_version": "2026-08-30-v2",
+                "prompt_version": "2026-08-31-v3",
             }
             papers.append(item)
     return news + papers

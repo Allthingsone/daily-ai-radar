@@ -20,6 +20,7 @@ class StaticSiteTests(unittest.TestCase):
             database = Database(root / "radar.db")
             database.initialize()
             fixed_now = datetime(2026, 8, 29, 1, 30, tzinfo=timezone.utc)
+            settings = load_settings()
 
             demo_items = build_demo_items()
             news = demo_items[0]
@@ -39,7 +40,7 @@ class StaticSiteTests(unittest.TestCase):
             news.metadata["llm_screening"] = {
                 "selected": True,
                 "rule_version": LLM_SCREENING_RULE_VERSION,
-                "prompt_version": "2026-08-30-v2",
+                "prompt_version": settings.llm.prompt_version,
             }
             paper_today.published_at = fixed_now - timedelta(hours=1)
             paper_today.metadata["provenance"] = {
@@ -48,6 +49,10 @@ class StaticSiteTests(unittest.TestCase):
                 "http_status": 200,
                 "method": "arxiv-id-match",
             }
+            paper_today.metadata["arxiv_first_submitted_at"] = (
+                fixed_now - timedelta(days=2)
+            ).isoformat()
+            paper_today.metadata["arxiv_version_number"] = 1
             paper_old.published_at = fixed_now - timedelta(days=2)
             paper_old.metadata["provenance"] = {
                 "status": "verified-primary",
@@ -59,7 +64,7 @@ class StaticSiteTests(unittest.TestCase):
             unverified.metadata["llm_screening"] = {
                 "selected": True,
                 "rule_version": LLM_SCREENING_RULE_VERSION,
-                "prompt_version": "2026-08-30-v2",
+                "prompt_version": settings.llm.prompt_version,
             }
 
             for item in (news, paper_today, paper_old, unverified):
@@ -67,7 +72,7 @@ class StaticSiteTests(unittest.TestCase):
 
             output = root / "site"
             paths = build_static_site(
-                load_settings(),
+                settings,
                 output,
                 database=database,
                 now=fixed_now,
@@ -80,6 +85,8 @@ class StaticSiteTests(unittest.TestCase):
             self.assertIn(news.title, html)
             self.assertIn(paper_today.title, html)
             self.assertIn(paper_old.title, html)
+            self.assertIn("首次提交", html)
+            self.assertIn("当前版本</b> v1", html)
             self.assertNotIn(unverified.title, html)
             self.assertIn('data-today="true"', html)
             self.assertIn('data-today="false"', html)

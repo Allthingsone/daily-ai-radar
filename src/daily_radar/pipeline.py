@@ -118,6 +118,14 @@ class RadarPipeline:
             sources_ok=sum(not result.error for result in results),
             sources_failed=sum(bool(result.error) for result in results),
             errors=errors,
+            details={
+                "raw_items": len(raw_items),
+                "within_time_window": len(recent),
+                "clustered_candidates": len(merged),
+                "verified_candidates": len(verified),
+                "llm_screened": len(screened),
+                "accepted": len(accepted),
+            },
         )
         summary.run_id = self.database.record_run(summary)
         self.database.record_source_checks(summary.run_id, results)
@@ -126,18 +134,23 @@ class RadarPipeline:
     def collect_papers(self) -> RunSummary:
         self.screener.ensure_ready()
         started = datetime.now(timezone.utc)
-        result = ArxivCollector(self.settings.papers, self.settings.network).collect()
+        collector = ArxivCollector(
+            self.settings.papers,
+            self.settings.network,
+            timezone_name=self.settings.timezone,
+        )
+        published_since, published_before = collector.daily_window(started)
+        result = collector.collect(now=started)
         errors = [f"arxiv: {result.error}"] if result.error else []
-        cutoff = started - timedelta(hours=self.settings.papers.lookback_hours)
-        future_limit = started + timedelta(hours=2)
-        recent = [
+        today_new = [
             item
             for item in result.items
             if bool(item.metadata.get("published_at_verified"))
-            and cutoff <= item.published_at <= future_limit
+            and bool(item.metadata.get("is_new_submission"))
+            and published_since <= item.published_at < published_before
         ]
         verified: List[RadarItem] = []
-        for item in deduplicate_exact(recent):
+        for item in deduplicate_exact(today_new):
             provenance = arxiv_api_verification(
                 item, result.final_url or result.source_url
             )
@@ -157,7 +170,11 @@ class RadarPipeline:
             if not provenance.usable:
                 continue
             verified.append(item)
-        screened = self.screener.screen(verified, "paper")
+        # Every verified new paper reaches a compact, high-recall V4-Pro
+        # triage.  Only plausible candidates consume full-abstract Thinking-max
+        # screening; budget exhaustion aborts rather than publishing a partial
+        # daily set.
+        screened = self.screener.screen_papers_two_stage(verified)
         accepted = [
             item for item in screened
             if bool(item.metadata.get("llm_screening", {}).get("selected"))
@@ -191,6 +208,24 @@ class RadarPipeline:
             sources_ok=0 if result.error else 1,
             sources_failed=1 if result.error else 0,
             errors=errors,
+            details={
+                "daily_query_items": len(result.items),
+                "verified_new_submissions": len(verified),
+                "triage_candidates": sum(
+                    bool(item.metadata.get("paper_triage", {}).get("candidate"))
+                    for item in screened
+                ),
+                "triage_rejected": sum(
+                    not bool(item.metadata.get("paper_triage", {}).get("candidate"))
+                    for item in screened
+                ),
+                "strict_screened": sum(
+                    bool(item.metadata.get("paper_triage", {}).get("candidate"))
+                    for item in screened
+                ),
+                "accepted": len(accepted),
+                "page_size": self.settings.papers.page_size,
+            },
         )
         summary.run_id = self.database.record_run(summary)
         self.database.record_source_checks(summary.run_id, [result])
@@ -202,5 +237,12 @@ class RadarPipeline:
         if kind == "paper":
             return [self.collect_papers()]
         if kind == "all":
-            return [self.collect_news(), self.collect_papers()]
+            # Paper readiness is checked first because arXiv's 20:00 Eastern
+            # announcement becomes available at 08:00 or 09:00 in Shanghai.
+            # A too-early backup trigger should fail before spending any news
+            # screening tokens; the next scheduled attempt can then retry.
+            paper = self.collect_papers()
+            if paper.sources_failed:
+                return [paper]
+            return [paper, self.collect_news()]
         raise ValueError("kind must be news, paper, or all")

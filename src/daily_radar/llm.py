@@ -215,9 +215,16 @@ class DeepSeekScreener:
             errors.append("daily_token_limit must be positive")
         if self.settings.daily_cost_limit_usd <= 0:
             errors.append("daily_cost_limit_usd must be positive")
+        if self.settings.paper_triage_batch_size <= 0:
+            errors.append("paper_triage_batch_size must be positive")
+        if self.settings.paper_triage_abstract_chars <= 0:
+            errors.append("paper_triage_abstract_chars must be positive")
+        if self.settings.paper_triage_max_output_tokens < 512:
+            errors.append("paper_triage_max_output_tokens must be at least 512")
         for label, path in (
             ("system", self.settings.system_prompt_path),
             ("news", self.settings.news_prompt_path),
+            ("paper-triage", self.settings.paper_triage_prompt_path),
             ("paper", self.settings.paper_prompt_path),
         ):
             if not path.is_file():
@@ -236,6 +243,7 @@ class DeepSeekScreener:
         hashes: Dict[str, str] = {}
         for kind, path in (
             ("news", self.settings.news_prompt_path),
+            ("paper-triage", self.settings.paper_triage_prompt_path),
             ("paper", self.settings.paper_prompt_path),
         ):
             if not path.is_file():
@@ -255,6 +263,7 @@ class DeepSeekScreener:
             "prompt_version": self.settings.prompt_version,
             "system_path": str(self.settings.system_prompt_path),
             "news_path": str(self.settings.news_prompt_path),
+            "paper_triage_path": str(self.settings.paper_triage_prompt_path),
             "paper_path": str(self.settings.paper_prompt_path),
             "sha256": hashes,
         }
@@ -281,16 +290,50 @@ class DeepSeekScreener:
                 self._apply_decision(item, decision, kind)
         return candidates
 
+    def screen_papers_two_stage(
+        self, items: Iterable[RadarItem]
+    ) -> List[RadarItem]:
+        """Triage every daily paper, then strictly screen plausible candidates.
+
+        The first pass deliberately uses the same best V4-Pro model with
+        thinking disabled and a compact abstract excerpt.  It is high recall:
+        uncertain items proceed to the full-abstract Thinking-max pass.  A
+        budget failure aborts the whole pipeline before any partial result is
+        published.
+        """
+
+        self.ensure_ready()
+        papers = list(items)
+        if not papers:
+            return papers
+        batch_size = self.settings.paper_triage_batch_size
+        for offset in range(0, len(papers), batch_size):
+            batch = papers[offset : offset + batch_size]
+            batch_label = f"{offset // batch_size + 1:03d}"
+            decisions = self._triage_paper_batch(batch, batch_label)
+            for item, decision in zip(batch, decisions):
+                self._apply_triage_decision(item, decision)
+
+        final_candidates = [
+            item
+            for item in papers
+            if bool(item.metadata.get("paper_triage", {}).get("candidate"))
+        ]
+        self.screen(final_candidates, "paper")
+        return papers
+
     def usage_summary(self, at: Optional[datetime] = None) -> Dict[str, Any]:
         current = at or self._clock()
         local_date = current.astimezone(ZoneInfo(self.timezone_name)).date().isoformat()
         summary = self.database.llm_usage_summary(local_date)
+        summary["stages"] = self.database.llm_usage_breakdown(local_date)
         summary.update(
             {
                 "provider": "deepseek",
                 "model": self.settings.model,
                 "thinking": "enabled" if self.settings.thinking_enabled else "disabled",
                 "reasoning_effort": self.settings.reasoning_effort,
+                "paper_triage_thinking": "disabled",
                 "daily_token_limit": self.settings.daily_token_limit,
                 "daily_cost_limit_usd": self.settings.daily_cost_limit_usd,
             }
@@ -341,6 +384,56 @@ class DeepSeekScreener:
                 )
         raise LLMResponseError(
             f"DeepSeek could not produce a valid {kind} decision after "
+            f"{self.settings.max_retries + 1} attempt(s): {last_error}"
+        )
+
+    def _triage_paper_batch(
+        self, batch: Sequence[RadarItem], batch_label: str
+    ) -> List[Dict[str, Any]]:
+        identifiers = [
+            f"t{batch_label}-{index:03d}" for index in range(len(batch))
+        ]
+        base_prompt = self._build_paper_triage_prompt(batch, identifiers)
+        prompt = base_prompt
+        last_error: Optional[Exception] = None
+        for attempt in range(self.settings.max_retries + 1):
+            purpose = (
+                f"triage-paper-batch-{batch_label}-attempt-{attempt + 1}"
+            )
+            try:
+                content = self._invoke(
+                    prompt,
+                    purpose,
+                    len(batch),
+                    "paper-triage",
+                    thinking_enabled=False,
+                    output_cap=self.settings.paper_triage_max_output_tokens,
+                )
+                return self._parse_triage_decisions(content, identifiers)
+            except LLMBudgetExceeded:
+                raise
+            except LLMOutputTruncated as exc:
+                if len(batch) == 1:
+                    raise LLMOutputTruncated(
+                        "DeepSeek paper triage remained truncated for one "
+                        f"candidate: {exc}"
+                    ) from exc
+                midpoint = len(batch) // 2
+                return self._triage_paper_batch(
+                    batch[:midpoint], f"{batch_label}a"
+                ) + self._triage_paper_batch(
+                    batch[midpoint:], f"{batch_label}b"
+                )
+            except (LLMRequestError, LLMResponseError) as exc:
+                last_error = exc
+                prompt = (
+                    base_prompt
+                    + "\n\n重试修正要求：上一次响应未通过程序校验。"
+                    + f"错误为：{exc}。请逐项检查 ID、candidate 和 confidence，"
+                    + "仅返回完整 JSON。"
+                )
+        raise LLMResponseError(
+            "DeepSeek could not produce valid paper triage after "
             f"{self.settings.max_retries + 1} attempt(s): {last_error}"
         )
 
@@ -459,12 +552,60 @@ class DeepSeekScreener:
             json.dumps(candidates, ensure_ascii=False, separators=(",", ":")),
         )
 
-    def _prompt_text(self, kind: str) -> str:
-        path = (
-            self.settings.news_prompt_path
-            if kind == "news"
-            else self.settings.paper_prompt_path
+    def _build_paper_triage_prompt(
+        self,
+        batch: Sequence[RadarItem],
+        identifiers: Sequence[str],
+    ) -> str:
+        candidates = [
+            {
+                "id": identifier,
+                "title": item.title[:1000],
+                "abstract_excerpt": item.summary[
+                    : self.settings.paper_triage_abstract_chars
+                ],
+                "abstract_is_truncated": (
+                    len(item.summary) > self.settings.paper_triage_abstract_chars
+                ),
+                "arxiv_categories": item.categories,
+                "arxiv_id": item.external_id,
+                "published_at": item.published_at.isoformat(),
+            }
+            for identifier, item in zip(identifiers, batch)
+        ]
+        schema_example = {
+            "items": [
+                {
+                    "id": identifiers[0],
+                    "candidate": True,
+                    "confidence": 0.5,
+                }
+            ]
+        }
+        template = self._prompt_text("paper-triage")
+        if "{{schema_json}}" not in template or "{{candidates_json}}" not in template:
+            raise LLMConfigurationError(
+                "paper-triage prompt must contain {{schema_json}} and "
+                "{{candidates_json}} placeholders"
+            )
+        return template.replace(
+            "{{schema_json}}",
+            json.dumps(schema_example, ensure_ascii=False, separators=(",", ":")),
+        ).replace(
+            "{{candidates_json}}",
+            json.dumps(candidates, ensure_ascii=False, separators=(",", ":")),
         )
+
+    def _prompt_text(self, kind: str) -> str:
+        paths = {
+            "news": self.settings.news_prompt_path,
+            "paper-triage": self.settings.paper_triage_prompt_path,
+            "paper": self.settings.paper_prompt_path,
+        }
+        try:
+            path = paths[kind]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported prompt kind: {kind}") from exc
         return path.read_text(encoding="utf-8").strip()
 
     def _prompt_sha256(self, kind: str) -> str:
@@ -476,7 +617,10 @@ class DeepSeekScreener:
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     def _budgeted_max_output(
-        self, messages: Sequence[Dict[str, str]], at: datetime
+        self,
+        messages: Sequence[Dict[str, str]],
+        at: datetime,
+        output_cap: Optional[int] = None,
     ) -> int:
         local_date = at.astimezone(ZoneInfo(self.timezone_name)).date().isoformat()
         used = self.database.llm_usage_summary(local_date)
@@ -497,7 +641,10 @@ class DeepSeekScreener:
             / rates["output"]
         )
         max_output = min(
-            self.settings.max_output_tokens, token_allowance, cost_allowance
+            self.settings.max_output_tokens,
+            output_cap if output_cap is not None else self.settings.max_output_tokens,
+            token_allowance,
+            cost_allowance,
         )
         if max_output < 512:
             raise LLMBudgetExceeded(
@@ -509,7 +656,14 @@ class DeepSeekScreener:
         return int(max_output)
 
     def _invoke(
-        self, prompt: str, purpose: str, item_count: int, kind: str
+        self,
+        prompt: str,
+        purpose: str,
+        item_count: int,
+        kind: str,
+        *,
+        thinking_enabled: bool = True,
+        output_cap: Optional[int] = None,
     ) -> str:
         now = self._clock()
         if now.tzinfo is None:
@@ -523,16 +677,21 @@ class DeepSeekScreener:
             },
             {"role": "user", "content": prompt},
         ]
-        max_output = self._budgeted_max_output(messages, now)
+        max_output = self._budgeted_max_output(
+            messages, now, output_cap=output_cap
+        )
         body = {
             "model": self.settings.model,
             "messages": messages,
-            "thinking": {"type": "enabled"},
-            "reasoning_effort": "max",
+            "thinking": {
+                "type": "enabled" if thinking_enabled else "disabled"
+            },
             "response_format": {"type": "json_object"},
             "max_tokens": max_output,
             "stream": False,
         }
+        if thinking_enabled:
+            body["reasoning_effort"] = "max"
         endpoint = self.settings.base_url.rstrip("/") + "/chat/completions"
         request = Request(
             endpoint,
@@ -541,7 +700,7 @@ class DeepSeekScreener:
             headers={
                 "Authorization": f"Bearer {self.settings.api_key}",
                 "Content-Type": "application/json",
-                "User-Agent": "DailyAIRadar/0.6.0",
+                "User-Agent": "DailyAIRadar/0.7.0",
             },
         )
         try:
@@ -704,6 +863,51 @@ class DeepSeekScreener:
                 ),
             )
             for identifier, item in zip(identifiers, batch)
+        ]
+
+    @staticmethod
+    def _parse_triage_decisions(
+        content: str, identifiers: Sequence[str]
+    ) -> List[Dict[str, Any]]:
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
+        try:
+            payload = json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            raise LLMResponseError(
+                "DeepSeek paper triage output is not valid JSON"
+            ) from exc
+        entries = payload.get("items") if isinstance(payload, dict) else None
+        if not isinstance(entries, list):
+            raise LLMResponseError("paper triage JSON must contain an items array")
+        by_id: Dict[str, Dict[str, Any]] = {}
+        for raw in entries:
+            if not isinstance(raw, dict):
+                raise LLMResponseError("every paper triage item must be an object")
+            identifier = raw.get("id")
+            if not isinstance(identifier, str) or identifier in by_id:
+                raise LLMResponseError("paper triage item id is missing or duplicated")
+            if set(raw) != {"id", "candidate", "confidence"}:
+                raise LLMResponseError(
+                    "paper triage items may only contain id, candidate, confidence"
+                )
+            by_id[identifier] = raw
+        if set(by_id) != set(identifiers):
+            raise LLMResponseError(
+                "DeepSeek changed, omitted, or added paper triage ids"
+            )
+        return [
+            {
+                "candidate": _required_bool(
+                    by_id[identifier].get("candidate"), "candidate"
+                ),
+                "confidence": round(
+                    _bounded_number(
+                        by_id[identifier].get("confidence"), 0, 1
+                    ),
+                    4,
+                ),
+            }
+            for identifier in identifiers
         ]
 
     @staticmethod
@@ -896,3 +1100,49 @@ class DeepSeekScreener:
         elif status == "access-restricted":
             reasons.append("来源验证：域名匹配，但站点限制自动访问")
         item.reasons = reasons
+
+    def _apply_triage_decision(
+        self, item: RadarItem, decision: Dict[str, Any]
+    ) -> None:
+        assessed_at = self._clock()
+        if assessed_at.tzinfo is None:
+            assessed_at = assessed_at.replace(tzinfo=timezone.utc)
+        candidate = bool(decision["candidate"])
+        triage = {
+            "provider": "deepseek",
+            "model": self.settings.model,
+            "thinking": "disabled",
+            "prompt_version": self.settings.prompt_version,
+            "prompt_sha256": self._prompt_sha256("paper-triage"),
+            "candidate": candidate,
+            "confidence": decision["confidence"],
+            "assessed_at": assessed_at.astimezone(timezone.utc).isoformat(),
+        }
+        item.metadata["paper_triage"] = triage
+        if candidate:
+            return
+
+        item.score = 0.0
+        item.category = "other"
+        item.component_scores = {}
+        item.is_important = False
+        item.metadata["summary_zh"] = ""
+        item.metadata["why_important"] = ""
+        item.metadata["llm_screening"] = {
+            "rule_version": LLM_SCREENING_RULE_VERSION,
+            "provider": "deepseek",
+            "model": self.settings.model,
+            "stage": "paper-triage",
+            "thinking": "disabled",
+            "reasoning_effort": "none",
+            "prompt_version": self.settings.prompt_version,
+            "prompt_sha256": self._prompt_sha256("paper-triage"),
+            "selected": False,
+            "importance_score": 0.0,
+            "confidence": decision["confidence"],
+            "category": "other",
+            "flags": {},
+            "evidence": [],
+            "assessed_at": assessed_at.astimezone(timezone.utc).isoformat(),
+        }
+        item.reasons = ["DeepSeek V4-Pro 非思考高召回初筛未进入严格复筛"]

@@ -12,9 +12,11 @@ news:
   cluster_similarity: 0.72
 
 papers:
-  # 用于采集回补和“近 4 日”视图；Dashboard 与每日导出默认仍只显示北京时间当天。
+  # 抓取北京时间当天对应的最新 arXiv 公告批次。page_size 只控制单次 API
+  # 请求大小；采集器会遵守 arXiv 建议的间隔并自动翻页到结果末尾。
   lookback_hours: 96
-  max_results: 150
+  page_size: 200
+  page_delay_seconds: 3.0
   max_important: 20
   categories:
     - cs.CV
@@ -22,6 +24,10 @@ papers:
     - cs.AI
     - cs.LG
     - cs.CL
+    - cs.SY
+    - eess.SY
+    - eess.IV
+    - stat.ML
 
 network:
   timeout_seconds: 25
@@ -29,7 +35,7 @@ network:
   retry_backoff_seconds: 1.0
   # arXiv asks clients to identify themselves. Replace the placeholder before
   # scheduling this project on a public server.
-  user_agent: "DailyAIRadar/0.6.0 (contact: replace-with-your-email@example.com)"
+  user_agent: "DailyAIRadar/0.7.0 (contact: replace-with-your-email@example.com)"
 
 llm:
   # DeepSeek 是语义入选的唯一裁判；没有 Key 或调用失败时任务会停止，
@@ -47,12 +53,18 @@ llm:
   max_output_tokens: 32768
   news_batch_size: 8
   paper_batch_size: 6
+  # 当天论文先全部由同一个 V4-Pro 做非思考、高召回初筛，只传标题和摘要
+  # 开头以控制 Token；入围项再用下面的 Thinking max 完整 Prompt 严格复筛。
+  paper_triage_batch_size: 80
+  paper_triage_abstract_chars: 480
+  paper_triage_max_output_tokens: 8192
   max_retries: 1
   daily_token_limit: 250000
   daily_cost_limit_usd: 1.00
-  prompt_version: 2026-08-30-v2
+  prompt_version: 2026-08-31-v3
   system_prompt_path: prompts/system.md
   news_prompt_path: prompts/news_screening.md
+  paper_triage_prompt_path: prompts/paper_triage.md
   paper_prompt_path: prompts/paper_screening.md
 
 email:

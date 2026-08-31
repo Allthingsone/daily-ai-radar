@@ -17,11 +17,11 @@ class WorkflowScheduleTests(unittest.TestCase):
         self.assertEqual(
             [entry["cron"] for entry in schedules],
             [
-                "30 7 * * *",
-                "50 7 * * *",
                 "10 8 * * *",
                 "30 8 * * *",
                 "50 8 * * *",
+                "10 9 * * *",
+                "30 9 * * *",
             ],
         )
         self.assertTrue(

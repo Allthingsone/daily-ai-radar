@@ -144,6 +144,12 @@ def _prepare_item(
     prepared["published_display"] = _format_datetime(
         str(item.get("published_at", "")), timezone_name
     )
+    prepared["arxiv_first_submitted_display"] = _format_datetime(
+        str(metadata.get("arxiv_first_submitted_at", "")), timezone_name
+    )
+    prepared["announcement_batch_display"] = _format_datetime(
+        str(metadata.get("announcement_batch_at", "")), timezone_name
+    )
     prepared["is_today"] = item.get("canonical_url") in today_urls
     prepared["verification_label"] = VERIFICATION_LABELS.get(
         str(provenance.get("status", "")), str(provenance.get("status", "待验证"))
@@ -156,6 +162,7 @@ def _prepare_item(
         prepared["category_label"],
         " ".join(str(value) for value in item.get("tags", [])),
         " ".join(str(value) for value in item.get("authors", [])),
+        str(metadata.get("arxiv_first_submitted_at", "")),
     ]
     prepared["search_text"] = " ".join(searchable).casefold()
     return prepared
@@ -262,12 +269,14 @@ def build_static_site(
     )
     local_date = current.astimezone(ZoneInfo(settings.timezone)).date().isoformat()
     llm_usage = database.llm_usage_summary(local_date)
+    llm_usage["stages"] = database.llm_usage_breakdown(local_date)
     llm_usage.update(
         {
             "provider": settings.llm.provider,
             "model": settings.llm.model,
             "thinking": "enabled" if settings.llm.thinking_enabled else "disabled",
             "reasoning_effort": settings.llm.reasoning_effort,
+            "paper_triage_thinking": "disabled",
             "daily_token_limit": settings.llm.daily_token_limit,
             "daily_cost_limit_usd": settings.llm.daily_cost_limit_usd,
             "prompt_version": settings.llm.prompt_version,

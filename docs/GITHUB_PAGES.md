@@ -54,17 +54,19 @@ https://YOUR_NAME.github.io/daily-ai-radar/
 工作流文件是 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml)：
 
 ```text
-北京时间 07:30 / 07:50 / 08:10 / 08:30 / 08:50
+北京时间 08:10 / 08:30 / 08:50 / 09:10 / 09:30
         ↓
 检查当日是否已经完整成功；若是则立即退出
         ↓
 运行全部离线测试
         ↓
-抓取 RSS / Atom / GitHub Releases / HN / 掘金 AI 热榜 / arXiv
+抓取 RSS / Atom / GitHub Releases / HN / 掘金 AI 热榜
+并完整分页抓取北京时间当天相关分类的全部 arXiv 新论文
         ↓
 校验链接、来源域名和 arXiv ID
         ↓
-DeepSeek V4-Pro Thinking max 批量语义筛选
+新闻：DeepSeek V4-Pro Thinking max
+论文：V4-Pro 非思考高召回初筛 → 完整摘要 Thinking max 复筛
         ↓
 检查当天 Token / 估算费用双限额
         ↓
@@ -76,6 +78,8 @@ DeepSeek V4-Pro Thinking max 批量语义筛选
 ```
 
 五个时间不是五次重复采集，而是一次主尝试加四次备用尝试。成功标记按北京时间日期保存在 GitHub Actions Cache；第一次完整成功后，后续运行会在安装依赖和调用 DeepSeek 前退出。工作流的 `cancel-in-progress` 为 `false`，所以较晚到达的备用事件只会排队，不会取消正在运行的主任务。
+
+arXiv 的正式公告时间是美东时间 20:00，对应北京时间夏令时 08:00、冬令时 09:00。08 点和 09 点两组触发覆盖季节切换；若官方公告尚未可用，论文就绪检查会在调用 DeepSeek 前失败，不会把上一批论文冒充今日结果，后续时间继续重试。
 
 手动运行默认也遵守当日去重。若确实需要在当天重新采集，可在 **Run workflow** 时勾选 `force`；这会再次调用 DeepSeek 并再次发送邮件，应只在明确需要时使用。
 
@@ -92,7 +96,7 @@ DeepSeek V4-Pro Thinking max 批量语义筛选
 
 如果全部来源不可用、DeepSeek Key/邮件 Secret 缺失、SMTP 失败、模型响应不合法或预算耗尽，构建会失败，Pages 不会被空页面覆盖，也不会写入当日成功标记；下一个备用时间会继续尝试。部分来源失败时，系统会继续处理可验证结果，并把失败记录展示在“来源健康”区域。
 
-每次 DeepSeek 调用都会保存输入、输出、推理、缓存 Token 和按官方峰谷价估算的费用。默认上限为每天 250,000 Token 与 1 美元，任一达到即停止。由于 GitHub Runner 每次都是新机器，工作流会同时从现有 Pages 的 `data/latest.json` 与 Actions 当日状态缓存恢复累计量。状态缓存在采集失败后也会执行保存，因此手动重试不会把已计费的失败调用重新当成零用量。
+每次 DeepSeek 调用都会保存输入、输出、推理、缓存 Token 和按官方峰谷价估算的费用，并区分新闻、论文初筛和论文复筛。默认上限为每天 250,000 Token 与 1 美元，任一达到即停止；全量论文尚未筛完时不会继续发布或发信。由于 GitHub Runner 每次都是新机器，工作流会同时从现有 Pages 的 `data/latest.json` 与 Actions 当日状态缓存恢复累计量。状态缓存在采集失败后也会执行保存，因此手动重试不会把已计费的失败调用重新当成零用量。
 
 V4-Pro 的 Thinking `max` 会让推理 Token 与最终 JSON 共用输出额度。项目给单次调用最多 32,768 Token；如果仍以 `finish_reason=length` 截断，程序立即把候选批次拆成两半分别处理，而不是原样重试同一请求。每日 Token 与费用双限额仍优先约束实际可用的 `max_tokens`。
 

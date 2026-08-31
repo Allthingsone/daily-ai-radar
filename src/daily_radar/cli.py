@@ -105,6 +105,13 @@ def _print_run(summary: object) -> None:
     )
     for error in summary.errors:
         print(f"  warning: {error}")
+    if summary.details:
+        print(
+            "  stages: "
+            + ", ".join(
+                f"{key}={value}" for key, value in summary.details.items()
+            )
+        )
 
 
 def _llm_usage_payload(settings: Settings, database: Database) -> dict:
@@ -115,11 +122,13 @@ def _llm_usage_payload(settings: Settings, database: Database) -> dict:
         .isoformat()
     )
     usage = database.llm_usage_summary(local_date)
+    usage["stages"] = database.llm_usage_breakdown(local_date)
     usage.update(
         {
             "model": settings.llm.model,
             "thinking": "enabled" if settings.llm.thinking_enabled else "disabled",
             "reasoning_effort": settings.llm.reasoning_effort,
+            "paper_triage_thinking": "disabled",
             "daily_token_limit": settings.llm.daily_token_limit,
             "daily_cost_limit_usd": settings.llm.daily_cost_limit_usd,
             "prompt_version": settings.llm.prompt_version,
@@ -185,6 +194,11 @@ def main(argv: Iterable[str] = None) -> int:
         for summary in summaries:
             _print_run(summary)
         _print_llm_usage(settings, database)
+        if any(
+            summary.kind == "paper" and summary.sources_failed
+            for summary in summaries
+        ):
+            return 1
         return 1 if summaries and all(summary.sources_ok == 0 for summary in summaries) else 0
     if args.command == "export":
         database.initialize()

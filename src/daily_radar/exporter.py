@@ -64,7 +64,11 @@ def export_markdown(
                     f"- DeepSeek 重要性：**{item['score']:.1f}**",
                     f"- 分类：{_category_label(item)}",
                     f"- 来源：{item['source_name']}",
-                    f"- 时间：{item['published_at']}",
+                    (
+                        f"- 公告批次：{item['published_at']}"
+                        if item["kind"] == "paper"
+                        else f"- 时间：{item['published_at']}"
+                    ),
                 ]
             )
             if item.get("reasons"):
@@ -79,6 +83,11 @@ def export_markdown(
                 )
             if item["kind"] == "paper" and item.get("external_id"):
                 lines.append(f"- arXiv ID：`{item['external_id']}`")
+                first_submitted = item.get("metadata", {}).get(
+                    "arxiv_first_submitted_at", ""
+                )
+                if first_submitted:
+                    lines.append(f"- 首次提交：{first_submitted}")
             summary_zh = item.get("metadata", {}).get("summary_zh", "")
             if summary_zh:
                 lines.extend(["", summary_zh])

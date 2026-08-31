@@ -128,7 +128,7 @@ def build_daily_message(
 
     text_lines = [
         f"Daily AI Radar · {local:%Y-%m-%d}",
-        "来源经过 URL/域名/arXiv 身份校验，语义筛选使用 DeepSeek V4-Pro Thinking max。",
+        "来源经过 URL/域名/arXiv 身份校验；论文先高召回初筛，最终语义筛选使用 DeepSeek V4-Pro Thinking max。",
         "",
     ]
     text_lines.extend(_text_section("AI 新发布与技术成果", news))
@@ -150,7 +150,7 @@ def build_daily_message(
         '<div style="max-width:720px;margin:auto;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;'
         'color:#101828"><header style="padding:24px;background:#0b1220;color:white;border-radius:12px">'
         f'<small>DAILY AI RADAR</small><h1 style="margin:8px 0">{local:%Y-%m-%d} AI 情报</h1>'
-        '<p style="margin:0;color:#cbd5e1">来源硬校验 · DeepSeek V4-Pro · Thinking max</p></header>'
+        '<p style="margin:0;color:#cbd5e1">来源硬校验 · V4-Pro 两阶段论文筛选 · 最终 Thinking max</p></header>'
         + _html_section("AI 新发布与技术成果", news)
         + _html_section("今日 MLLM/VLA × 自动驾驶论文", papers)
         + '<aside style="padding:14px;background:#f2f4f7;border-radius:8px;color:#475467">'

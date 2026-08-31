@@ -1119,6 +1119,11 @@ a {
   display: block;
 }
 
+.run-list small.run-stages {
+  color: #87938d;
+  line-height: 1.5;
+}
+
 .run-list strong {
   color: #bbc4bf;
   font-size: 10px;

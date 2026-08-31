@@ -64,6 +64,32 @@ class DatabaseTests(unittest.TestCase):
             self.assertTrue(check["success"])
             self.assertEqual(check["domain_match"], 1)
 
+    def test_run_stage_details_are_persisted_for_zero_result_audits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            database.initialize()
+            now = datetime.now(timezone.utc)
+            database.record_run(
+                RunSummary(
+                    "paper",
+                    now,
+                    now,
+                    120,
+                    0,
+                    0,
+                    1,
+                    0,
+                    details={
+                        "daily_query_items": 120,
+                        "triage_candidates": 4,
+                        "accepted": 0,
+                    },
+                )
+            )
+            run = database.recent_runs()[0]
+            self.assertEqual(run["details"]["daily_query_items"], 120)
+            self.assertEqual(run["details"]["triage_candidates"], 4)
+
     def test_publication_cutoff_excludes_older_history(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")

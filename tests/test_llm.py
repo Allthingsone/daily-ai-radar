@@ -378,6 +378,110 @@ class DeepSeekScreenerTests(unittest.TestCase):
             screener.screen([item], "paper")
             self.assertFalse(item.metadata["llm_screening"]["selected"])
 
+    def test_all_daily_papers_get_compact_triage_before_strict_screening(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            database.initialize()
+            calls = []
+            triage = {
+                "items": [
+                    {"id": "t001-000", "candidate": True, "confidence": 0.72},
+                    {"id": "t001-001", "candidate": False, "confidence": 0.98},
+                ]
+            }
+            final = {
+                "items": [
+                    {
+                        "id": "p001-000",
+                        "selected": True,
+                        "is_mllm_vla": True,
+                        "is_autonomous_driving": True,
+                        "is_substantive_application": True,
+                        "importance_score": 88,
+                        "confidence": 0.91,
+                        "category": "vla-policy",
+                        "summary_zh": "论文提出并评测了自动驾驶 VLA 策略。",
+                        "why_important": "两个目标方向均为方法和实验核心。",
+                        "evidence": [
+                            "VLA driving policy is evaluated in closed-loop autonomous driving"
+                        ],
+                        "tags": ["VLA", "autonomous-driving"],
+                        "dimension_scores": {
+                            "mllm_vla_relevance": 95,
+                            "driving_relevance": 98,
+                            "method_novelty": 82,
+                            "evidence_quality": 88,
+                            "reproducibility": 65,
+                        },
+                    }
+                ]
+            }
+
+            def response(content, index):
+                return FakeResponse(
+                    {
+                        "id": f"response-{index}",
+                        "model": "deepseek-v4-pro",
+                        "choices": [
+                            {
+                                "finish_reason": "stop",
+                                "message": {"content": json.dumps(content)},
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 100,
+                            "completion_tokens": 50,
+                            "total_tokens": 150,
+                        },
+                    }
+                )
+
+            responses = [response(triage, 1), response(final, 2)]
+
+            def opener(request, timeout):
+                calls.append(json.loads(request.data.decode("utf-8")))
+                return responses[len(calls) - 1]
+
+            screener = DeepSeekScreener(
+                llm_settings(
+                    paper_triage_batch_size=10,
+                    paper_triage_abstract_chars=80,
+                ),
+                database,
+                "Asia/Shanghai",
+                opener=opener,
+                clock=lambda: datetime(2026, 8, 29, tzinfo=timezone.utc),
+            )
+            relevant = make_item("paper")
+            unrelated = make_item("paper")
+            unrelated.title = "A theorem about prime numbers"
+            unrelated.summary = "We prove a result in analytic number theory."
+
+            screened = screener.screen_papers_two_stage([relevant, unrelated])
+
+            self.assertEqual(screened, [relevant, unrelated])
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0]["thinking"], {"type": "disabled"})
+            self.assertNotIn("reasoning_effort", calls[0])
+            self.assertEqual(calls[0]["max_tokens"], 8192)
+            self.assertEqual(calls[1]["thinking"], {"type": "enabled"})
+            self.assertEqual(calls[1]["reasoning_effort"], "max")
+            self.assertTrue(relevant.metadata["paper_triage"]["candidate"])
+            self.assertTrue(relevant.metadata["llm_screening"]["selected"])
+            self.assertFalse(unrelated.metadata["paper_triage"]["candidate"])
+            self.assertEqual(
+                unrelated.metadata["llm_screening"]["stage"], "paper-triage"
+            )
+            usage = database.llm_usage_summary("2026-08-29")
+            self.assertEqual(usage["calls"], 2)
+            self.assertEqual(usage["request_items"], 3)
+            stages = {
+                item["stage"]: item
+                for item in database.llm_usage_breakdown("2026-08-29")
+            }
+            self.assertEqual(stages["paper_triage"]["request_items"], 2)
+            self.assertEqual(stages["paper_final"]["request_items"], 1)
+
     def test_daily_token_limit_stops_before_network_call(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")

@@ -74,4 +74,5 @@ class RunSummary:
     sources_ok: int
     sources_failed: int
     errors: List[str] = field(default_factory=list)
+    details: Dict[str, Any] = field(default_factory=dict)
     run_id: Optional[int] = None

@@ -5,30 +5,32 @@
 1. 聚合重大 AI 基座模型、重要工具/硬件、自动驾驶数据集与 Benchmark、重要且热议的科研成果，以及有可验证互动量的社区热议，并将同一事件的多个来源折叠到一起。
 2. 收集最新 MLLM/VLM/VLA 论文，但主 Feed 只接受同时以多模态模型和自动驾驶应用为实质核心的论文。
 
-当前版本是 **v0.6.0 社区热度与严格新闻门槛版**。程序负责来源真实性、时间窗口、社区互动量、去重和 arXiv 身份校验；通过这些校验的候选统一交给 `deepseek-v4-pro` 的 Thinking `max` 模式判断是否入选、重要性、分类与中文摘要。关键词分数不再决定正式 Feed，模型也不能凭空声明某条内容“很热”。
+当前版本是 **v0.7.0 当日全量论文双阶段筛选版**。程序负责来源真实性、时间窗口、社区互动量、去重和 arXiv 身份校验。新闻与论文严格复筛使用 `deepseek-v4-pro` 的 Thinking `max`；当天论文的全量初筛使用同一个 V4-Pro 的非思考模式降低 Token 消耗。关键词分数不再决定正式 Feed，模型也不能凭空声明某条内容“很热”。
 
-## v0.6.0 已包含
+## v0.7.0 已包含
 
 - 16 个启用来源，包括官方博客、媒体、GitHub Releases、Hacker News 官方 API 与掘金人工智能热榜；Anthropic 和 CSDN 候选源因当前无法稳定核验发布时间而保留为禁用状态。
-- arXiv `cs.CV/cs.RO/cs.AI/cs.LG/cs.CL` 最新论文采集。
+- arXiv `cs.CV/cs.RO/cs.AI/cs.LG/cs.CL/cs.SY/eess.SY/eess.IV/stat.ML` 当天公告批次全量采集：按官方美东公告计划解析对应提交区间，自动分页到 `totalResults` 末尾，不再截断为 150 条。
 - URL 规范化、精确去重和相似标题事件聚类。
 - 新闻方向不限，但模型发布只收重大基座模型；数据集/Benchmark 只收自动驾驶；科研成果必须同时重要且具有采集器验证的社区热度。
 - 独立的“社区热议”类别，当前使用 Hacker News 积分/评论与掘金 AI 热榜的热度/浏览/点赞/评论/收藏；页面明确提示这些指标是讨论信号，不是一手事实证明。
 - 社区热度由结构化互动量和配置门槛确定，DeepSeek 只能解释这些信号，不能从标题语气或自身记忆猜测热度。
-- 论文由 DeepSeek 判断 MLLM/VLM/VLA 和自动驾驶是否均为实质核心，而不是简单关键词共现。
-- 固定使用 `deepseek-v4-pro`、Thinking 开启、`reasoning_effort=max`，不自动降级到 Flash 或硬编码评分。
-- 新闻、论文和系统 Prompt 独立存放在 `prompts/`，每条判断记录 Prompt 版本与 SHA-256。
-- 每次 API 调用记录输入、输出、推理、缓存 Token 与估算费用；每日 25 万 Token / 1 美元双限额。
+- arXiv 查询不再预先要求 MLLM/VLA/驾驶关键词；当天所有已验证论文先由 V4-Pro 做高召回语义初筛，入围项再以完整摘要执行 Thinking `max` 严格复筛。
+- 分别保存 arXiv 首次发布时间、最后更新时间和版本号；每日入口只处理首次发布时间位于当天的论文，不把旧论文版本更新伪装成今日新论文。
+- 固定使用 `deepseek-v4-pro`；新闻与论文严格复筛开启 Thinking `max`，论文高召回初筛关闭 Thinking，不自动降级到 Flash 或硬编码评分。
+- 新闻、论文初筛、论文复筛和系统 Prompt 独立存放在 `prompts/`，每条判断记录 Prompt 版本与 SHA-256。
+- 每次 API 调用记录输入、输出、推理、缓存 Token 与估算费用，并按新闻、论文初筛、论文复筛展示阶段用量；每日 25 万 Token / 1 美元双限额。
 - GitHub Pages 显示当日 DeepSeek 用量；同一天重复运行会从 Pages 与 Actions 当日状态缓存恢复累计量，失败调用也不会在下一次运行中丢失。
 - V4-Pro 最大思考使用 32,768 输出 Token 上限；若仍返回 `finish_reason=length`，程序会自动拆小候选批次，不会原样重复同一个截断请求。
 - 163 SMTP 定时邮件；同一个邮箱可同时作为发件和收件账号。
 - SQLite 历史库、收藏/已读/不相关反馈。
 - FastAPI Dashboard，以及 JSON、Markdown、RSS 导出。
 - 可直接发布的 GitHub Pages 静态站点，支持内容类型、精选范围、论文日期和全文搜索切换。
-- GitHub Actions 每天北京时间 07:30、07:50、08:10、08:30、08:50 提供五次自动触发机会；首次完整成功后，其余触发按当日成功标记直接退出，本地电脑无需在线。
+- GitHub Actions 每天北京时间 08:10、08:30、08:50、09:10、09:30 提供五次自动触发机会，覆盖 arXiv 20:00 美东公告在夏令时/冬令时对应的 08:00/09:00；首次完整成功后，其余触发按当日成功标记直接退出。
 - 逐条 URL 可达性检查、发布域名白名单和 arXiv ID 一致性校验。
 - 逐来源健康记录：Feed 原始 URL、最终 URL、HTTP 状态、条目数、耗时和错误。
 - 真实数据库与演示数据库物理隔离；正式导出只包含已验证结果。
+- 采集运行记录额外保存“当日查询、来源验证、初筛候选、初筛淘汰、严格复筛、最终入选”数量，出现 0 条时可以定位具体阶段。
 - 论文页默认严格显示北京时间当天，另提供“近 4 日”和“历史”视图，不用旧论文填充今日空缺。
 - 离线演示数据和单元测试。
 
@@ -92,9 +94,10 @@ flowchart LR
     A[RSS / Atom / 社区榜单 API / arXiv] --> B[规范化]
     B --> C[URL 去重与新闻事件聚类]
     C --> V[链接可达性 + 来源域名验证]
-    V --> D[DeepSeek V4-Pro / Thinking max]
+    V --> D[新闻 V4-Pro / Thinking max]
+    V --> T[当天论文 V4-Pro / 非思考高召回初筛]
+    T --> F[候选完整摘要 / Thinking max 复筛]
     D --> E[严格新闻路线 + 社区热议判断]
-    D --> F[MLLM/VLA × 自动驾驶语义判断]
     E --> H[精选结果]
     F --> H
     H --> I[(SQLite)]
@@ -102,7 +105,7 @@ flowchart LR
     I --> K[JSON / Markdown / RSS]
 ```
 
-DeepSeek 是正式 Feed 的唯一语义裁判。Key 缺失、模型配置被降级、响应字段不完整、预算耗尽或 API 调用失败时，任务会停止，不会静默回退到关键词评分并发布结果。上一版已成功部署的 Pages 会继续保留。
+DeepSeek 是正式 Feed 的唯一语义裁判。论文初筛只在能明确排除至少一个目标方向时拒绝，不确定项必须进入严格复筛。Key 缺失、模型配置被降级、响应字段不完整、预算耗尽或 API 调用失败时，任务会停止，不会发布只完成一部分筛选的日报，也不会静默回退到关键词评分；上一版已成功部署的 Pages 会继续保留。
 
 ## 配置
 
@@ -110,6 +113,7 @@ DeepSeek 是正式 Feed 的唯一语义裁判。Key 缺失、模型配置被降�
 - [`config/sources.yaml`](config/sources.yaml)：新闻来源、采集适配器、来源等级和社区热度门槛。
 - [`docs/COMMUNITY_SOURCES.md`](docs/COMMUNITY_SOURCES.md)：社区来源能力、真实性边界及知乎/公众号未直接启用的原因。
 - [`prompts/news_screening.md`](prompts/news_screening.md)：新闻筛选 Prompt。
+- [`prompts/paper_triage.md`](prompts/paper_triage.md)：当天全量论文高召回初筛 Prompt。
 - [`prompts/paper_screening.md`](prompts/paper_screening.md)：论文筛选 Prompt。
 - [`prompts/system.md`](prompts/system.md)：共同的安全与事实边界 Prompt。
 - [`prompts/README.md`](prompts/README.md)：后续修改、验证和升级 Prompt 的步骤。
@@ -137,7 +141,7 @@ export DEEPSEEK_API_KEY="your-key"
 
 模型名、Thinking 参数和峰谷价格均以 DeepSeek 官方文档为依据：[Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/)、[Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode/)、[Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/)。
 
-修改筛选标准时直接编辑 `prompts/news_screening.md` 或 `prompts/paper_screening.md`，保留 `{{schema_json}}` 与 `{{candidates_json}}` 两个占位符，然后同步递增 `config/settings.yaml` 中的 `prompt_version`。代码仍会严格校验候选 ID、布尔门槛、分类和各维度分数，避免 Prompt 改动破坏数据结构。
+修改筛选标准时直接编辑 `prompts/news_screening.md`、`prompts/paper_triage.md` 或 `prompts/paper_screening.md`，保留 `{{schema_json}}` 与 `{{candidates_json}}` 两个占位符，然后同步递增 `config/settings.yaml` 中的 `prompt_version`。代码仍会严格校验候选 ID、布尔门槛、分类和各维度分数，避免 Prompt 改动破坏数据结构。
 
 修改后可先做完全离线的检查，不会消耗 Token：
 
@@ -166,7 +170,12 @@ python -m unittest discover -s tests -v
 
 ### 论文
 
-来源和 arXiv 身份验证后执行语义双轴门槛：
+程序先根据 arXiv 美东时间 20:00 的[官方公告计划](https://info.arxiv.org/help/availability.html)计算当天公告对应的提交区间，再构造 `submittedDate` 查询；只限制配置中的高相关分类，不加入任何 MLLM/VLA/驾驶关键词。随后使用 `start` 与 `max_results` 分页读取 `totalResults` 指定的全部结果，页间默认等待 3 秒。分页规则、GMT 日期格式与版本字段来自 [arXiv API User's Manual](https://info.arxiv.org/help/api/user-manual.html)。
+
+每篇通过 arXiv 身份验证的新论文都会经历两个阶段：
+
+1. V4-Pro 非思考高召回初筛：输入标题、分类和摘要前 480 字；无法明确排除时继续复筛。
+2. V4-Pro Thinking `max` 严格复筛：输入完整公开摘要并执行以下三重门槛。
 
 ```text
 主 Feed = MLLM/VLM/VLA 是方法实质核心
@@ -174,11 +183,13 @@ python -m unittest discover -s tests -v
           AND 并非只在背景或相关工作中顺带提及
 ```
 
-模型返回两个方向的语义相关性、方法新颖性、证据质量、可复现性和总体重要性。程序只验证结构并按模型给出的总体重要性排序，不再用固定加权公式决定入选。
+严格复筛返回两个方向的语义相关性、方法新颖性、证据质量、可复现性和总体重要性。程序只验证结构并按模型给出的总体重要性排序，不再用固定加权公式决定入选。
 
 每篇论文还必须满足：arXiv API 返回的 ID 与 `arxiv.org/abs/{id}` 官方摘要页一致。页面直接显示 arXiv ID、摘要页、PDF 和可用的 DOI/代码链接。
 
-“今日论文”按 `Asia/Shanghai` 自然日判断，并使用论文的官方首次提交时间。采集器保留 96 小时回补窗口，以应对 arXiv 周末节奏或临时采集中断，但旧论文只会出现在“近 4 日”或“历史”视图；如果今天没有通过双轴门槛的论文，页面明确显示 0 条。
+“今日论文”按公告批次转换后的 `Asia/Shanghai` 日期判断，而不是错误地要求作者首次提交时间也落在北京时间当天。页面同时保留并展示官方首次提交时间；`updated` 与版本号用于区分后续版本，旧论文更新不会进入当日候选。SQLite 中已有的旧结果仍可出现在“近 4 日”或“历史”视图；如果今天没有通过三重门槛的论文，页面明确显示 0 条。
+
+默认 25 万 Token / 1 美元预算适用于一般日量。若当天分类论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 调高上限，页面会继续按阶段记录实际用量。
 
 ### “真实性”的技术边界
 

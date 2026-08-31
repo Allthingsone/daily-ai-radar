@@ -1,6 +1,10 @@
 import unittest
+from datetime import datetime, timezone
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 from daily_radar.collectors.arxiv import ArxivCollector
+from daily_radar.collectors.base import FetchResponse
 from daily_radar.collectors.community import (
     parse_csdn_article_metadata,
     parse_hackernews_story,
@@ -23,7 +27,7 @@ ARXIV = b"""<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
   <entry>
     <id>http://arxiv.org/abs/2608.01234v2</id>
-    <updated>2026-08-03T01:00:00Z</updated><published>2026-08-03T01:00:00Z</published>
+    <updated>2026-08-03T02:00:00Z</updated><published>2026-08-03T01:00:00Z</published>
     <title>DriveVLA for Autonomous Driving</title>
     <summary>A vision-language-action driving agent.</summary>
     <author><name>A. Researcher</name></author>
@@ -156,13 +160,143 @@ class CollectorParserTests(unittest.TestCase):
         self.assertEqual(items[0].external_id, "2608.01234")
         self.assertEqual(items[0].metadata["code_url"], "https://github.com/example/drivevla")
         self.assertEqual(items[0].authors, ["A. Researcher"])
+        self.assertEqual(items[0].metadata["arxiv_version_number"], 2)
+        self.assertEqual(items[0].metadata["record_version_type"], "updated-version")
+        self.assertEqual(items[0].metadata["updated_at"], "2026-08-03T02:00:00+00:00")
 
-    def test_arxiv_query_is_domain_targeted(self):
-        collector = ArxivCollector(PaperSettings(), NetworkSettings())
+    def test_arxiv_query_is_announcement_wide_not_keyword_filtered(self):
+        fixed = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+        collector = ArxivCollector(
+            PaperSettings(), NetworkSettings(), clock=lambda: fixed
+        )
         url = collector.build_url()
-        self.assertIn("autonomous+driving", url)
-        self.assertIn("vision-language", url)
-        self.assertIn("cat%3Acs.CV", url)
+        query = parse_qs(urlsplit(url).query)
+        search = query["search_query"][0]
+        self.assertIn("cat:cs.CV", search)
+        self.assertIn("submittedDate:[202607301800 TO 202607311759]", search)
+        self.assertNotIn("autonomous driving", search)
+        self.assertNotIn("vision-language", search)
+        self.assertEqual(query["start"], ["0"])
+        self.assertEqual(query["max_results"], ["200"])
+
+    def test_arxiv_collector_pages_to_total_and_marks_daily_new_submissions(self):
+        fixed = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+
+        def page(identifier, title, published):
+            return f"""<?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom"
+                  xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+              <opensearch:totalResults>2</opensearch:totalResults>
+              <entry>
+                <id>http://arxiv.org/abs/{identifier}v1</id>
+                <updated>{published}</updated><published>{published}</published>
+                <title>{title}</title><summary>Daily abstract.</summary>
+                <author><name>A. Author</name></author><category term="cs.AI"/>
+              </entry>
+            </feed>""".encode("utf-8")
+
+        payloads = {
+            0: page("2608.00001", "First daily paper", "2026-07-31T17:00:00Z"),
+            1: page("2608.00002", "Second daily paper", "2026-07-31T16:30:00Z"),
+        }
+        starts = []
+
+        def fake_fetch(url, **kwargs):
+            start = int(parse_qs(urlsplit(url).query)["start"][0])
+            starts.append(start)
+            return FetchResponse(
+                payload=payloads[start],
+                final_url=url,
+                status=200,
+                content_type="application/atom+xml",
+            )
+
+        sleeps = []
+        collector = ArxivCollector(
+            PaperSettings(page_size=1, page_delay_seconds=3.0),
+            NetworkSettings(),
+            clock=lambda: fixed,
+            sleeper=sleeps.append,
+        )
+        with patch("daily_radar.collectors.arxiv.fetch_response", fake_fetch):
+            result = collector.collect()
+
+        self.assertEqual(result.error, "")
+        self.assertEqual(starts, [0, 1])
+        self.assertEqual(sleeps, [3.0])
+        self.assertEqual(len(result.items), 2)
+        self.assertTrue(all(item.metadata["is_new_submission"] for item in result.items))
+        self.assertTrue(all(item.metadata["submission_type"] == "new-submission" for item in result.items))
+        self.assertTrue(
+            all(
+                item.published_at.isoformat() == "2026-08-03T00:00:00+00:00"
+                for item in result.items
+            )
+        )
+        self.assertEqual(
+            result.items[0].metadata["arxiv_first_submitted_at"],
+            "2026-07-31T17:00:00+00:00",
+        )
+
+    def test_arxiv_announcement_window_follows_eastern_schedule(self):
+        summer = datetime(2026, 8, 31, 2, 0, tzinfo=timezone.utc)
+        collector = ArxivCollector(PaperSettings(), NetworkSettings())
+        submitted_since, submitted_before, announced_at = (
+            collector.announcement_window(summer)
+        )
+        self.assertEqual(submitted_since.isoformat(), "2026-08-27T18:00:00+00:00")
+        self.assertEqual(submitted_before.isoformat(), "2026-08-28T18:00:00+00:00")
+        self.assertEqual(announced_at.isoformat(), "2026-08-31T00:00:00+00:00")
+
+        winter = datetime(2026, 1, 5, 2, 0, tzinfo=timezone.utc)
+        submitted_since, submitted_before, announced_at = (
+            collector.announcement_window(winter)
+        )
+        self.assertEqual(submitted_since.isoformat(), "2026-01-01T19:00:00+00:00")
+        self.assertEqual(submitted_before.isoformat(), "2026-01-02T19:00:00+00:00")
+        self.assertEqual(announced_at.isoformat(), "2026-01-05T01:00:00+00:00")
+
+    def test_weekday_before_eastern_announcement_fails_without_stale_batch(self):
+        before_release = datetime(2026, 8, 30, 23, 30, tzinfo=timezone.utc)
+        collector = ArxivCollector(
+            PaperSettings(), NetworkSettings(), clock=lambda: before_release
+        )
+        with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
+            result = collector.collect()
+        self.assertIn("not available yet", result.error)
+        fetch.assert_not_called()
+
+    def test_empty_expected_announcement_fails_for_backup_retry(self):
+        after_release = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+        empty = b"""<?xml version="1.0"?><feed
+        xmlns="http://www.w3.org/2005/Atom"
+        xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+        <opensearch:totalResults>0</opensearch:totalResults></feed>"""
+        collector = ArxivCollector(
+            PaperSettings(), NetworkSettings(), clock=lambda: after_release
+        )
+        response = FetchResponse(
+            payload=empty,
+            final_url="https://export.arxiv.org/api/query",
+            status=200,
+            content_type="application/atom+xml",
+        )
+        with patch(
+            "daily_radar.collectors.arxiv.fetch_response", return_value=response
+        ):
+            result = collector.collect()
+        self.assertIn("search index may not be ready", result.error)
+
+    def test_weekend_without_new_announcement_is_a_valid_empty_day(self):
+        saturday = datetime(2026, 8, 29, 2, 0, tzinfo=timezone.utc)
+        collector = ArxivCollector(
+            PaperSettings(), NetworkSettings(), clock=lambda: saturday
+        )
+        with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
+            result = collector.collect()
+        self.assertEqual(result.error, "")
+        self.assertEqual(result.items, [])
+        fetch.assert_not_called()
 
 
 if __name__ == "__main__":

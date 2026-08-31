@@ -9,17 +9,18 @@ on:
         default: false
         type: boolean
   schedule:
-    # Multiple non-hourly attempts tolerate delayed or dropped scheduled events.
-    # A date-scoped success marker makes every later attempt a cheap no-op.
-    - cron: "30 7 * * *"
-      timezone: "Asia/Shanghai"
-    - cron: "50 7 * * *"
-      timezone: "Asia/Shanghai"
+    # arXiv announces at 20:00 US Eastern: 08:00 Shanghai in daylight-saving
+    # time and 09:00 in standard time. These attempts cover both seasons; the
+    # collector fails closed before spending LLM tokens if a run is too early.
     - cron: "10 8 * * *"
       timezone: "Asia/Shanghai"
     - cron: "30 8 * * *"
       timezone: "Asia/Shanghai"
     - cron: "50 8 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "10 9 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "30 9 * * *"
       timezone: "Asia/Shanghai"
 
 permissions:
