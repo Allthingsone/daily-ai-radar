@@ -19,7 +19,7 @@
    - `DAILY_RADAR_EMAIL_USERNAME`：163 邮箱地址。
    - `DAILY_RADAR_EMAIL_AUTH_CODE`：163 邮箱客户端授权码，不是网页登录密码。
 
-如果暂时不配置两个邮件 Secret，页面仍会每天更新，邮件步骤会跳过。收件地址默认就是 `DAILY_RADAR_EMAIL_USERNAME`，无需再提供第二个邮箱。
+收件地址默认就是 `DAILY_RADAR_EMAIL_USERNAME`，无需再提供第二个邮箱。当前工作流把邮件发送视为每日交付的一部分；若两个邮件 Secret 缺失或 SMTP 发送失败，本次任务不会写入成功标记，后续备用触发会继续重试，并保留上一版成功页面。
 
 `ARXIV_CONTACT_EMAIL` 用于让 arXiv 识别客户端，不是登录凭据。它会出现在发往数据源的 User-Agent 中；如果不希望使用主邮箱，可填写专门的联系邮箱或别名。
 
@@ -54,7 +54,9 @@ https://YOUR_NAME.github.io/daily-ai-radar/
 工作流文件是 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml)：
 
 ```text
-北京时间每天 08:37
+北京时间 07:30 / 07:50 / 08:10 / 08:30 / 08:50
+        ↓
+检查当日是否已经完整成功；若是则立即退出
         ↓
 运行全部离线测试
         ↓
@@ -69,7 +71,13 @@ DeepSeek V4-Pro Thinking max 批量语义筛选
 生成 HTML + JSON + Markdown + RSS
         ↓
 发布到 GitHub Pages，并通过 163 SMTP 发送邮件
+        ↓
+仅在邮件和 Pages 均成功后保存当日成功标记
 ```
+
+五个时间不是五次重复采集，而是一次主尝试加四次备用尝试。成功标记按北京时间日期保存在 GitHub Actions Cache；第一次完整成功后，后续运行会在安装依赖和调用 DeepSeek 前退出。工作流的 `cancel-in-progress` 为 `false`，所以较晚到达的备用事件只会排队，不会取消正在运行的主任务。
+
+手动运行默认也遵守当日去重。若确实需要在当天重新采集，可在 **Run workflow** 时勾选 `force`；这会再次调用 DeepSeek 并再次发送邮件，应只在明确需要时使用。
 
 页面上的开关是只读的前端筛选：
 
@@ -82,7 +90,7 @@ DeepSeek V4-Pro Thinking max 批量语义筛选
 
 社区热议当前来自 Hacker News 官方 API 和掘金人工智能热榜；榜单排名与互动量会显示在条目卡片中。CSDN 适配器因原文日期在 CI 环境中无法稳定核验而默认停用。详细来源矩阵和知乎/公众号接入边界见 [`COMMUNITY_SOURCES.md`](COMMUNITY_SOURCES.md)。
 
-如果全部来源不可用、DeepSeek Key 缺失、模型响应不合法或预算耗尽，构建会失败，Pages 不会被空页面覆盖，上一版成功页面仍在线。部分来源失败时，系统会继续处理可验证结果，并把失败记录展示在“来源健康”区域。
+如果全部来源不可用、DeepSeek Key/邮件 Secret 缺失、SMTP 失败、模型响应不合法或预算耗尽，构建会失败，Pages 不会被空页面覆盖，也不会写入当日成功标记；下一个备用时间会继续尝试。部分来源失败时，系统会继续处理可验证结果，并把失败记录展示在“来源健康”区域。
 
 每次 DeepSeek 调用都会保存输入、输出、推理、缓存 Token 和按官方峰谷价估算的费用。默认上限为每天 250,000 Token 与 1 美元，任一达到即停止。由于 GitHub Runner 每次都是新机器，工作流会同时从现有 Pages 的 `data/latest.json` 与 Actions 当日状态缓存恢复累计量。状态缓存在采集失败后也会执行保存，因此手动重试不会把已计费的失败调用重新当成零用量。
 

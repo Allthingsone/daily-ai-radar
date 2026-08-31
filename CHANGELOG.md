@@ -2,6 +2,9 @@
 
 ## 0.6.0 - 2026-08-30
 
+- Added five Asia/Shanghai schedule attempts at 07:30, 07:50, 08:10, 08:30, and 08:50, guarded by a date-scoped successful-delivery marker.
+- Prevented backup triggers from cancelling active runs, and made SMTP failure eligible for the next scheduled retry.
+- Added a manual `force` input for intentional same-day reruns without weakening automatic deduplication.
 - Restricted model news to major foundation LLM or multimodal model releases and material upgrades.
 - Restricted dataset and benchmark news to autonomous-driving applications.
 - Required research-result news to be both important and backed by a collector-verified community heat signal.

@@ -25,7 +25,7 @@
 - SQLite 历史库、收藏/已读/不相关反馈。
 - FastAPI Dashboard，以及 JSON、Markdown、RSS 导出。
 - 可直接发布的 GitHub Pages 静态站点，支持内容类型、精选范围、论文日期和全文搜索切换。
-- GitHub Actions 每天北京时间 08:37 自动采集、测试、构建并发布；本地电脑无需在线。
+- GitHub Actions 每天北京时间 07:30、07:50、08:10、08:30、08:50 提供五次自动触发机会；首次完整成功后，其余触发按当日成功标记直接退出，本地电脑无需在线。
 - 逐条 URL 可达性检查、发布域名白名单和 arXiv ID 一致性校验。
 - 逐来源健康记录：Feed 原始 URL、最终 URL、HTTP 状态、条目数、耗时和错误。
 - 真实数据库与演示数据库物理隔离；正式导出只包含已验证结果。
@@ -205,7 +205,7 @@ python -m unittest discover -s tests -v
 - Actions Secret `DAILY_RADAR_EMAIL_USERNAME`：163 邮箱地址；
 - Actions Secret `DAILY_RADAR_EMAIL_AUTH_CODE`：163 客户端授权码，不是登录密码。
 
-收件地址默认等于发件账号，不需要再设置第二个邮箱。若暂未配置两个邮件 Secret，Pages 仍正常更新，邮件步骤会明确跳过。
+收件地址默认等于发件账号，不需要再设置第二个邮箱。自动日报把邮件发送视为完整成功的一部分：两个邮件 Secret 缺失或 SMTP 发送失败时不会写入当日成功标记，后续备用时间会继续重试，并保留上一版成功的 Pages。
 
 完整的首次启用步骤、每天如何更新、失败时如何保留旧页面以及当前限制，见 [`docs/GITHUB_PAGES.md`](docs/GITHUB_PAGES.md)。
 

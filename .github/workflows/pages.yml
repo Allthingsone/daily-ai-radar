@@ -2,9 +2,24 @@ name: Daily radar and GitHub Pages
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: Run again even when today's digest was already delivered
+        required: false
+        default: false
+        type: boolean
   schedule:
-    # Avoid the top of the hour, when scheduled Actions are more likely to queue.
-    - cron: "37 8 * * *"
+    # Multiple non-hourly attempts tolerate delayed or dropped scheduled events.
+    # A date-scoped success marker makes every later attempt a cheap no-op.
+    - cron: "30 7 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "50 7 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "10 8 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "30 8 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "50 8 * * *"
       timezone: "Asia/Shanghai"
 
 permissions:
@@ -12,29 +27,69 @@ permissions:
 
 concurrency:
   group: github-pages
-  cancel-in-progress: true
+  # A backup trigger must queue behind, rather than cancel, an active delivery.
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      should_run: ${{ steps.daily-guard.outputs.should_run }}
+      local_date: ${{ steps.usage-date.outputs.value }}
+      success_marker_exists: ${{ steps.daily-success.outputs.cache-hit }}
     steps:
+      - name: Compute Shanghai usage date
+        id: usage-date
+        shell: bash
+        run: echo "value=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore today's successful-delivery marker
+        id: daily-success
+        uses: actions/cache/restore@v5
+        with:
+          path: .daily-success
+          key: daily-radar-success-${{ runner.os }}-${{ steps.usage-date.outputs.value }}
+
+      - name: Skip backup attempts after today's first success
+        id: daily-guard
+        shell: bash
+        env:
+          FORCE_RUN: ${{ inputs.force }}
+          SUCCESS_CACHE_HIT: ${{ steps.daily-success.outputs.cache-hit }}
+        run: |
+          if [ "$FORCE_RUN" = "true" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "Manual force run requested; ignoring today's success marker."
+          elif [ "$SUCCESS_CACHE_HIT" = "true" ]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Today's digest was already delivered; this backup attempt is a no-op."
+          else
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "No successful delivery exists for today; continuing."
+          fi
+
       - name: Check out repository
+        if: steps.daily-guard.outputs.should_run == 'true'
         uses: actions/checkout@v7
 
       - name: Set up Python
+        if: steps.daily-guard.outputs.should_run == 'true'
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install project
+        if: steps.daily-guard.outputs.should_run == 'true'
         run: python -m pip install -e .
 
       - name: Run offline tests
+        if: steps.daily-guard.outputs.should_run == 'true'
         run: python -m unittest discover -s tests -v
 
       - name: Require an arXiv contact address
+        if: steps.daily-guard.outputs.should_run == 'true'
         env:
           RADAR_CONTACT_EMAIL: ${{ vars.ARXIV_CONTACT_EMAIL }}
         run: |
@@ -44,6 +99,7 @@ jobs:
           fi
 
       - name: Require DeepSeek API secret
+        if: steps.daily-guard.outputs.should_run == 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
@@ -52,12 +108,8 @@ jobs:
             exit 1
           fi
 
-      - name: Compute Shanghai usage date
-        id: usage-date
-        shell: bash
-        run: echo "value=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
-
       - name: Restore same-day radar state
+        if: steps.daily-guard.outputs.should_run == 'true'
         uses: actions/cache/restore@v5
         with:
           path: data/daily_radar.db
@@ -68,22 +120,25 @@ jobs:
             daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-
 
       - name: Configure GitHub Pages
+        if: steps.daily-guard.outputs.should_run == 'true'
         id: pages
         uses: actions/configure-pages@v6
 
       - name: Restore today's published DeepSeek usage
+        if: steps.daily-guard.outputs.should_run == 'true'
         run: >-
           daily-radar restore-usage
           --url "${{ steps.pages.outputs.base_url }}/data/latest.json"
 
       - name: Collect verified news and papers
+        if: steps.daily-guard.outputs.should_run == 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
         run: daily-radar collect --kind all
 
       - name: Save same-day radar state, including failed-call usage
-        if: always()
+        if: ${{ always() && steps.daily-guard.outputs.should_run == 'true' }}
         uses: actions/cache/save@v5
         with:
           path: data/daily_radar.db
@@ -91,12 +146,14 @@ jobs:
             daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Build static site
+        if: steps.daily-guard.outputs.should_run == 'true'
         run: >-
           daily-radar build-site
           --output site
           --site-url "${{ steps.pages.outputs.base_url }}/"
 
       - name: Validate publish artifact
+        if: steps.daily-guard.outputs.should_run == 'true'
         run: |
           test -s site/index.html
           test -s site/data/latest.json
@@ -106,26 +163,27 @@ jobs:
           test -s site/assets/pages.js
 
       - name: Upload GitHub Pages artifact
+        if: steps.daily-guard.outputs.should_run == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
           include-hidden-files: true
 
-      - name: Send daily email when SMTP secrets are configured
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        continue-on-error: true
+      - name: Send daily email
+        if: steps.daily-guard.outputs.should_run == 'true'
         env:
           DAILY_RADAR_EMAIL_USERNAME: ${{ secrets.DAILY_RADAR_EMAIL_USERNAME }}
           DAILY_RADAR_EMAIL_AUTH_CODE: ${{ secrets.DAILY_RADAR_EMAIL_AUTH_CODE }}
         run: |
           if [ -z "$DAILY_RADAR_EMAIL_USERNAME" ] || [ -z "$DAILY_RADAR_EMAIL_AUTH_CODE" ]; then
-            echo "::notice::Email skipped. Configure DAILY_RADAR_EMAIL_USERNAME and DAILY_RADAR_EMAIL_AUTH_CODE to enable it."
-            exit 0
+            echo "::error::Configure DAILY_RADAR_EMAIL_USERNAME and DAILY_RADAR_EMAIL_AUTH_CODE before enabling daily delivery."
+            exit 1
           fi
           daily-radar send-email --site-url "${{ steps.pages.outputs.base_url }}/"
 
   deploy:
     needs: build
+    if: needs.build.result == 'success' && needs.build.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -137,3 +195,27 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+  mark-success:
+    needs: [build, deploy]
+    if: >-
+      always() &&
+      needs.build.result == 'success' &&
+      needs.deploy.result == 'success' &&
+      needs.build.outputs.should_run == 'true' &&
+      needs.build.outputs.success_marker_exists != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create successful-delivery receipt
+        shell: bash
+        run: |
+          mkdir -p .daily-success
+          echo "local_date=${{ needs.build.outputs.local_date }}" > .daily-success/receipt.txt
+          echo "workflow_run=${{ github.run_id }}" >> .daily-success/receipt.txt
+          echo "completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .daily-success/receipt.txt
+
+      - name: Save today's successful-delivery marker
+        uses: actions/cache/save@v5
+        with:
+          path: .daily-success
+          key: daily-radar-success-${{ runner.os }}-${{ needs.build.outputs.local_date }}
