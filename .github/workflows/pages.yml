@@ -10,8 +10,20 @@ on:
         type: boolean
   schedule:
     # arXiv announces at 20:00 US Eastern: 08:00 Shanghai in daylight-saving
-    # time and 09:00 in standard time. These attempts cover both seasons; the
+    # time and 09:00 in standard time. The 03:10-04:30 attempts compensate for
+    # severe GitHub schedule delays observed in this repository. The 08:10-09:30
+    # attempts remain the authoritative fallbacks when GitHub runs on time; the
     # collector fails closed before spending LLM tokens if a run is too early.
+    - cron: "10 3 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "30 3 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "50 3 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "10 4 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "30 4 * * *"
+      timezone: "Asia/Shanghai"
     - cron: "10 8 * * *"
       timezone: "Asia/Shanghai"
     - cron: "30 8 * * *"

@@ -9,7 +9,7 @@
 - Kept full-abstract final paper selection on V4-Pro Thinking `max` with the existing MLLM/VLA × autonomous-driving × substantive-application hard gate.
 - Raised the default daily Token cap to 500k while keeping the USD 1 cost cap; exhaustion still fails closed before database publication, Pages deployment, or email instead of emitting a partially screened digest.
 - Added per-run stage counts and per-stage LLM usage for news, paper triage, and paper final screening so a zero-result day can be audited.
-- Shifted the five backup triggers to 08:10–09:30 Asia/Shanghai so both US daylight-saving and standard-time 20:00 arXiv announcements are covered; too-early attempts stop before LLM calls.
+- Added five 03:10–04:30 Asia/Shanghai delay-compensation triggers while retaining five authoritative 08:10–09:30 fallbacks; too-early attempts stop before LLM calls and the first complete success suppresses the remaining runs.
 - Added offline coverage for all-page arXiv collection, date-only queries, version metadata, two-stage model parameters, usage breakdown, and pipeline stage counts.
 
 ## 0.6.0 - 2026-08-30
