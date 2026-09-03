@@ -299,6 +299,38 @@ class Database:
             )
             return int(cursor.lastrowid)
 
+    def has_successful_run(
+        self,
+        kind: str,
+        started_since: datetime,
+        started_before: datetime,
+    ) -> bool:
+        """Return whether a usable run of ``kind`` started in the interval.
+
+        A run is reusable only when at least one source succeeded. Failed
+        arXiv readiness checks are recorded with ``sources_ok = 0`` and must
+        never suppress a later retry after the daily announcement is ready.
+        """
+
+        if started_since.tzinfo is None or started_before.tzinfo is None:
+            raise ValueError("run interval must be timezone-aware")
+        if started_before <= started_since:
+            raise ValueError("run interval must be non-empty")
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM runs
+                WHERE kind = ?
+                  AND started_at >= ?
+                  AND started_at < ?
+                  AND sources_ok > 0
+                LIMIT 1
+                """,
+                (kind, _iso(started_since), _iso(started_before)),
+            ).fetchone()
+        return row is not None
+
     def record_source_checks(
         self, run_id: int, results: List[CollectionResult]
     ) -> None:

@@ -8,7 +8,7 @@ from unittest.mock import patch
 from daily_radar.config import load_settings
 from daily_radar.db import Database
 from daily_radar.eligibility import LLM_SCREENING_RULE_VERSION
-from daily_radar.models import CollectionResult, RadarItem
+from daily_radar.models import CollectionResult, RadarItem, RunSummary
 from daily_radar.pipeline import RadarPipeline
 
 
@@ -117,6 +117,52 @@ class PipelinePaperTests(unittest.TestCase):
             self.assertEqual(len(summaries), 1)
             self.assertEqual(summaries[0].kind, "paper")
             self.assertEqual(summaries[0].sources_failed, 1)
+            collect_news.assert_not_called()
+
+    def test_publish_reuses_a_successful_news_run_from_today(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            settings = replace(load_settings(), database_path=database.path)
+            pipeline = RadarPipeline(settings, database)
+            now = datetime.now(timezone.utc)
+            database.record_run(
+                RunSummary("news", now, now, 25, 4, 4, 5, 0)
+            )
+            paper_summary = RunSummary("paper", now, now, 100, 2, 2, 1, 0)
+
+            with patch.object(
+                pipeline, "collect_papers", return_value=paper_summary
+            ) as collect_papers, patch.object(
+                pipeline, "collect_news"
+            ) as collect_news:
+                summaries = pipeline.collect("publish")
+
+            self.assertEqual(summaries, [paper_summary])
+            collect_papers.assert_called_once_with()
+            collect_news.assert_not_called()
+
+    def test_publish_reuses_both_stages_after_a_delivery_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            settings = replace(load_settings(), database_path=database.path)
+            pipeline = RadarPipeline(settings, database)
+            now = datetime.now(timezone.utc)
+            database.record_run(
+                RunSummary("news", now, now, 25, 4, 4, 5, 0)
+            )
+            database.record_run(
+                RunSummary("paper", now, now, 100, 2, 2, 1, 0)
+            )
+
+            with patch.object(
+                pipeline, "collect_papers"
+            ) as collect_papers, patch.object(
+                pipeline, "collect_news"
+            ) as collect_news:
+                summaries = pipeline.collect("publish")
+
+            self.assertEqual(summaries, [])
+            collect_papers.assert_not_called()
             collect_news.assert_not_called()
 
 

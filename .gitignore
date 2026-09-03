@@ -13,5 +13,10 @@ outputs/*.json
 outputs/*.md
 outputs/*.xml
 site/
+cloudflare-worker/node_modules/
+cloudflare-worker/.wrangler/
+cloudflare-worker/.dev.vars*
+cloudflare-worker/.env*
+!cloudflare-worker/.dev.vars.example
 !data/.gitkeep
 !outputs/.gitkeep

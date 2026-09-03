@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 - 2026-09-03
+
+- Added a Cloudflare Worker watchdog that checks at 07:15–07:55 for news pre-screening and every 15 minutes from 08:05–09:35 for final publication.
+- Made the watchdog arXiv-aware: it derives the 08:00/09:00 Shanghai release boundary from the current `America/New_York` daylight-saving offset and skips premature weekday dispatches.
+- Split GitHub Actions into explicit `news` and `publish` phases so expensive news verification and DeepSeek screening normally finish before the daily arXiv announcement.
+- Added same-day successful-run reuse for news and papers. Publication and email retries no longer repeat completed model calls, while failed arXiv readiness checks remain retryable.
+- Added Pages freshness, completed-phase, active-run, and existing daily-success guards to prevent duplicate dispatches and emails across Cloudflare and native GitHub fallbacks.
+- Removed the ineffective 03:10–04:30 delay-compensation schedules and retained the five 08:10–09:30 GitHub-native schedules as independent fallbacks.
+- Added a secret-safe Cloudflare deployment guide plus Python and Node regression coverage for the split workflow, UTC schedule, duplicate guards, and US daylight-saving boundary.
+
 ## 0.7.0 - 2026-08-31
 
 - Replaced the 150-result, keyword-targeted arXiv query with the official latest-announcement submission interval across nine relevant CS/EESS/stat categories.

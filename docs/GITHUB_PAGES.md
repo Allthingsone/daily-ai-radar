@@ -1,10 +1,10 @@
 # GitHub Pages + DeepSeek + 邮件部署说明
 
-这一版不需要常驻服务器。GitHub Actions 每天在云端启动一台临时运行器，完成采集、验证、筛选和静态页面生成；GitHub Pages 保存并提供最后一次成功生成的页面。电脑和手机都可以关机。
+这一版不需要常驻服务器。Cloudflare Worker 负责准时唤醒，GitHub Actions 每天在云端启动临时运行器完成采集、验证、筛选和静态页面生成；GitHub Pages 保存并提供最后一次成功生成的页面。电脑和手机都可以关机。
 
 ## 需要准备的账号与设置
 
-需要 GitHub 账号和 DeepSeek API 账号；邮件推送还需要已开启 SMTP 的 163 邮箱。新闻 RSS、Hacker News、掘金与 arXiv 采集本身不需要 API Key。知乎、CSDN 和微信公众号本版未启用，因此当前部署不需要新增任何社区账号或 Secret。
+需要 GitHub、DeepSeek API 和 Cloudflare 账号；邮件推送还需要已开启 SMTP 的 163 邮箱。新闻 RSS、Hacker News、掘金与 arXiv 采集本身不需要 API Key。知乎、CSDN 和微信公众号本版未启用，因此当前部署不需要新增任何社区账号或 Secret。
 
 推荐创建公开仓库，例如 `daily-ai-radar`。GitHub Free 可以为公开仓库使用 Pages；私有仓库发布 Pages 取决于 GitHub 付费方案。
 
@@ -23,7 +23,7 @@
 
 `ARXIV_CONTACT_EMAIL` 用于让 arXiv 识别客户端，不是登录凭据。它会出现在发往数据源的 User-Agent 中；如果不希望使用主邮箱，可填写专门的联系邮箱或别名。
 
-不要把 DeepSeek Key、GitHub 密码、Personal Access Token、邮箱密码或 SMTP 授权码写入文件、Issue 或聊天。GitHub Pages 发布使用 Actions 自动提供的短期 `GITHUB_TOKEN`。
+不要把 DeepSeek Key、GitHub 密码、Personal Access Token、邮箱密码或 SMTP 授权码写入文件、Issue 或聊天。GitHub Pages 发布使用 Actions 自动提供的短期 `GITHUB_TOKEN`；Cloudflare 外部触发需要的仓库级 fine-grained token 只保存在 Cloudflare Secret 中，设置方法见 [`CLOUDFLARE_DISPATCHER.md`](CLOUDFLARE_DISPATCHER.md)。
 
 ## 首次上传
 
@@ -54,20 +54,17 @@ https://YOUR_NAME.github.io/daily-ai-radar/
 工作流文件是 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml)：
 
 ```text
-北京时间 03:10 / 03:30 / 03:50 / 04:10 / 04:30（延迟补偿）
-北京时间 08:10 / 08:30 / 08:50 / 09:10 / 09:30（正式兜底）
+Cloudflare 07:15 / 07:35 / 07:55（新闻预处理重试）
         ↓
-检查当日是否已经完整成功；若是则立即退出
+抓取并验证新闻 → DeepSeek 新闻筛选 → 保存当天状态，不发邮件
         ↓
-运行全部离线测试
+Cloudflare 08:05 起每 15 分钟检查（自动适配美东夏令时）
         ↓
-抓取 RSS / Atom / GitHub Releases / HN / 掘金 AI 热榜
-并完整分页抓取北京时间当天相关分类的全部 arXiv 新论文
+arXiv 公告可用后，完整分页抓取当天相关分类的全部新论文
         ↓
-校验链接、来源域名和 arXiv ID
+校验 arXiv ID → 非思考高召回初筛 → 完整摘要 Thinking max 复筛
         ↓
-新闻：DeepSeek V4-Pro Thinking max
-论文：V4-Pro 非思考高召回初筛 → 完整摘要 Thinking max 复筛
+复用 07 点已筛选新闻；若预处理未成功则自动补采新闻
         ↓
 检查当天 Token / 估算费用双限额
         ↓
@@ -78,9 +75,11 @@ https://YOUR_NAME.github.io/daily-ai-radar/
 仅在邮件和 Pages 均成功后保存当日成功标记
 ```
 
-十个时间不是十次重复采集：前五次用于补偿 GitHub 调度器可能出现的长时间延迟，后五次是 arXiv 公告时间之后的正式兜底。成功标记按北京时间日期保存在 GitHub Actions Cache；第一次完整成功后，后续运行会在安装依赖和调用 DeepSeek 前退出。工作流的 `cancel-in-progress` 为 `false`，所以较晚到达的备用事件只会排队，不会取消正在运行的主任务。
+Cloudflare 的多次时间是状态检查，不是重复采集：它先检查当天 Pages、同阶段成功记录和运行中的工作流，只有确实需要时才调用 GitHub `workflow_dispatch`。GitHub 自带的 08:10、08:30、08:50、09:10、09:30 五个 `schedule` 继续作为外部服务失效时的独立兜底。成功标记按北京时间日期保存在 GitHub Actions Cache；第一次完整成功后，后续运行会在安装依赖和调用 DeepSeek 前退出。工作流的 `cancel-in-progress` 为 `false`，所以较晚到达的备用事件只会排队，不会取消正在运行的主任务。
 
-arXiv 的正式公告时间是美东时间 20:00，对应北京时间夏令时 08:00、冬令时 09:00。08 点和 09 点两组触发覆盖季节切换；凌晨尝试若被 GitHub 延迟约五小时，也会落入这个可用窗口。若任何尝试在官方公告可用前准时到达，论文就绪检查会在调用 DeepSeek 前失败，不会把上一批论文冒充今日结果，后续时间继续重试。
+arXiv 的正式公告时间是美东时间 20:00，对应北京时间夏令时 08:00、冬令时 09:00。Worker 按 `America/New_York` 时区动态判断，公告时间之前不会触发论文阶段；采集器还会再次执行就绪检查。任何过早尝试都不会把上一批论文冒充今日结果，也不会花费论文筛选 Token。
+
+拆成两阶段后，通常约 20 分钟的新闻流程在 08 点前完成，公告后只剩约 10–15 分钟的论文与发布流程。若预处理失败，`publish` 阶段会自动补采新闻；若邮件或 Pages 在采集后失败，后续重试会复用当天成功的新闻与论文状态。
 
 手动运行默认也遵守当日去重。若确实需要在当天重新采集，可在 **Run workflow** 时勾选 `force`；这会再次调用 DeepSeek 并再次发送邮件，应只在明确需要时使用。
 
@@ -116,8 +115,8 @@ python3 -m http.server 8765 --directory site
 
 - Pages 是静态只读站点，不支持收藏、已读或“不相关”反馈写入。
 - 每次 Actions 使用临时运行器；这一版发布当前日报和近 4 日论文，不保存完整在线历史数据库。
-- 定时运行可能因 GitHub 高负载略有延迟，所以选择了非整点时间。
-- GitHub 会在公开仓库连续 60 天没有仓库活动时自动停用定时工作流。若仓库长期不改动，需要在 Actions 页面重新启用；后续版本可增加轻量保活或历史归档策略。
+- GitHub 自带的备用定时仍可能因高负载延迟；10 点前交付依赖已正确部署且 Token 未过期的 Cloudflare Worker，也不构成绝对服务等级保证。
+- GitHub 可能在公开仓库长期无活动后停用原生定时；Cloudflare 的 `workflow_dispatch` 仍应定期检查，Token 过期前需要轮换。
 - 费用是根据官方公开单价和返回 Token 估算；最终扣费以 DeepSeek 控制台账单为准。
 - Actions 状态缓存只保存 SQLite 数据库中的公开候选、筛选结果和用量记录，不包含 DeepSeek Key、邮箱授权码或 Prompt 正文；DeepSeek 控制台账单仍是最终费用依据。
 
@@ -126,3 +125,4 @@ GitHub 的相关官方说明：
 - [使用自定义工作流发布 GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
 - [配置 GitHub Pages 发布源](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 - [GitHub Actions 定时事件](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+- [Cloudflare Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/)

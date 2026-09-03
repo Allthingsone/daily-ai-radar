@@ -1,8 +1,17 @@
 name: Daily radar and GitHub Pages
+run-name: Daily radar · ${{ inputs.phase || 'publish' }}
 
 on:
   workflow_dispatch:
     inputs:
+      phase:
+        description: Pre-screen news, or finish and publish the daily digest
+        required: true
+        default: publish
+        type: choice
+        options:
+          - publish
+          - news
       force:
         description: Run again even when today's digest was already delivered
         required: false
@@ -10,20 +19,8 @@ on:
         type: boolean
   schedule:
     # arXiv announces at 20:00 US Eastern: 08:00 Shanghai in daylight-saving
-    # time and 09:00 in standard time. The 03:10-04:30 attempts compensate for
-    # severe GitHub schedule delays observed in this repository. The 08:10-09:30
-    # attempts remain the authoritative fallbacks when GitHub runs on time; the
-    # collector fails closed before spending LLM tokens if a run is too early.
-    - cron: "10 3 * * *"
-      timezone: "Asia/Shanghai"
-    - cron: "30 3 * * *"
-      timezone: "Asia/Shanghai"
-    - cron: "50 3 * * *"
-      timezone: "Asia/Shanghai"
-    - cron: "10 4 * * *"
-      timezone: "Asia/Shanghai"
-    - cron: "30 4 * * *"
-      timezone: "Asia/Shanghai"
+    # time and 09:00 in standard time. These are native GitHub fallbacks;
+    # Cloudflare's external watchdog supplies the punctual primary triggers.
     - cron: "10 8 * * *"
       timezone: "Asia/Shanghai"
     - cron: "30 8 * * *"
@@ -49,9 +46,22 @@ jobs:
     timeout-minutes: 60
     outputs:
       should_run: ${{ steps.daily-guard.outputs.should_run }}
+      phase: ${{ steps.execution-phase.outputs.value }}
       local_date: ${{ steps.usage-date.outputs.value }}
       success_marker_exists: ${{ steps.daily-success.outputs.cache-hit }}
     steps:
+      - name: Resolve execution phase
+        id: execution-phase
+        shell: bash
+        env:
+          REQUESTED_PHASE: ${{ inputs.phase }}
+        run: |
+          if [ "$REQUESTED_PHASE" = "news" ]; then
+            echo "value=news" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=publish" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Compute Shanghai usage date
         id: usage-date
         shell: bash
@@ -99,7 +109,9 @@ jobs:
 
       - name: Run offline tests
         if: steps.daily-guard.outputs.should_run == 'true'
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m unittest discover -s tests -v
+          node --test cloudflare-worker/test/*.test.js
 
       - name: Require an arXiv contact address
         if: steps.daily-guard.outputs.should_run == 'true'
@@ -143,12 +155,29 @@ jobs:
           daily-radar restore-usage
           --url "${{ steps.pages.outputs.base_url }}/data/latest.json"
 
-      - name: Collect verified news and papers
-        if: steps.daily-guard.outputs.should_run == 'true'
+      - name: Pre-screen verified news
+        if: >-
+          steps.daily-guard.outputs.should_run == 'true' &&
+          steps.execution-phase.outputs.value == 'news'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
-        run: daily-radar collect --kind all
+        run: daily-radar collect --kind news
+
+      - name: Collect papers and finalize digest
+        if: >-
+          steps.daily-guard.outputs.should_run == 'true' &&
+          steps.execution-phase.outputs.value == 'publish'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
+          FORCE_RUN: ${{ inputs.force }}
+        run: |
+          if [ "$FORCE_RUN" = "true" ]; then
+            daily-radar collect --kind all
+          else
+            daily-radar collect --kind publish
+          fi
 
       - name: Save same-day radar state, including failed-call usage
         if: ${{ always() && steps.daily-guard.outputs.should_run == 'true' }}
@@ -159,14 +188,18 @@ jobs:
             daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Build static site
-        if: steps.daily-guard.outputs.should_run == 'true'
+        if: >-
+          steps.daily-guard.outputs.should_run == 'true' &&
+          steps.execution-phase.outputs.value == 'publish'
         run: >-
           daily-radar build-site
           --output site
           --site-url "${{ steps.pages.outputs.base_url }}/"
 
       - name: Validate publish artifact
-        if: steps.daily-guard.outputs.should_run == 'true'
+        if: >-
+          steps.daily-guard.outputs.should_run == 'true' &&
+          steps.execution-phase.outputs.value == 'publish'
         run: |
           test -s site/index.html
           test -s site/data/latest.json
@@ -176,14 +209,18 @@ jobs:
           test -s site/assets/pages.js
 
       - name: Upload GitHub Pages artifact
-        if: steps.daily-guard.outputs.should_run == 'true'
+        if: >-
+          steps.daily-guard.outputs.should_run == 'true' &&
+          steps.execution-phase.outputs.value == 'publish'
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
           include-hidden-files: true
 
       - name: Send daily email
-        if: steps.daily-guard.outputs.should_run == 'true'
+        if: >-
+          steps.daily-guard.outputs.should_run == 'true' &&
+          steps.execution-phase.outputs.value == 'publish'
         env:
           DAILY_RADAR_EMAIL_USERNAME: ${{ secrets.DAILY_RADAR_EMAIL_USERNAME }}
           DAILY_RADAR_EMAIL_AUTH_CODE: ${{ secrets.DAILY_RADAR_EMAIL_AUTH_CODE }}
@@ -196,7 +233,10 @@ jobs:
 
   deploy:
     needs: build
-    if: needs.build.result == 'success' && needs.build.outputs.should_run == 'true'
+    if: >-
+      needs.build.result == 'success' &&
+      needs.build.outputs.should_run == 'true' &&
+      needs.build.outputs.phase == 'publish'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -216,6 +256,7 @@ jobs:
       needs.build.result == 'success' &&
       needs.deploy.result == 'success' &&
       needs.build.outputs.should_run == 'true' &&
+      needs.build.outputs.phase == 'publish' &&
       needs.build.outputs.success_marker_exists != 'true'
     runs-on: ubuntu-latest
     steps:

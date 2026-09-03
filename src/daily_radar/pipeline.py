@@ -29,6 +29,16 @@ class RadarPipeline:
             settings.llm, self.database, settings.timezone
         )
 
+    def _has_successful_run_today(self, kind: str, now: datetime) -> bool:
+        local_now = now.astimezone(ZoneInfo(self.settings.timezone))
+        local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        local_end = local_start + timedelta(days=1)
+        return self.database.has_successful_run(
+            kind,
+            local_start.astimezone(timezone.utc),
+            local_end.astimezone(timezone.utc),
+        )
+
     def _news_collector(self, source: SourceConfig):
         if source.adapter == "hackernews":
             return HackerNewsCollector(source, self.settings.network)
@@ -245,4 +255,20 @@ class RadarPipeline:
             if paper.sources_failed:
                 return [paper]
             return [paper, self.collect_news()]
-        raise ValueError("kind must be news, paper, or all")
+        if kind == "publish":
+            # The externally scheduled news phase normally finishes before
+            # arXiv's 08:00/09:00 Shanghai announcement. Reuse its same-day
+            # database state so the final phase only has to screen papers.
+            # Successful paper state is reusable too when email or Pages
+            # deployment failed after collection and a watchdog retries.
+            started = datetime.now(timezone.utc)
+            summaries: List[RunSummary] = []
+            if not self._has_successful_run_today("paper", started):
+                paper = self.collect_papers()
+                summaries.append(paper)
+                if paper.sources_failed:
+                    return summaries
+            if not self._has_successful_run_today("news", started):
+                summaries.append(self.collect_news())
+            return summaries
+        raise ValueError("kind must be news, paper, all, or publish")

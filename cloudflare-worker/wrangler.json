@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "daily-ai-radar-dispatcher",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-03",
+  "secrets": {
+    "required": ["GITHUB_ACTIONS_TOKEN"]
+  },
+  "triggers": {
+    "crons": [
+      "15,35,55 23 * * *",
+      "5,20,35,50 0 * * *",
+      "5,20,35 1 * * *"
+    ]
+  },
+  "vars": {
+    "GITHUB_OWNER": "Allthingsone",
+    "GITHUB_REPO": "daily-ai-radar",
+    "GITHUB_WORKFLOW": "pages.yml",
+    "GITHUB_REF": "main",
+    "PAGES_LATEST_URL": "https://allthingsone.github.io/daily-ai-radar/data/latest.json"
+  }
+}

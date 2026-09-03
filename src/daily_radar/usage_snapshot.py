@@ -33,7 +33,7 @@ def restore_usage_snapshot(
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
     local_date = current.astimezone(ZoneInfo(settings.timezone)).date().isoformat()
-    request = Request(url, headers={"User-Agent": "DailyAIRadar/0.7.0"})
+    request = Request(url, headers={"User-Agent": "DailyAIRadar/0.8.0"})
     try:
         with (opener or urlopen)(request, timeout=15) as response:
             payload = json.loads(response.read().decode("utf-8"))

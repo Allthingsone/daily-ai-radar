@@ -90,6 +90,45 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(run["details"]["daily_query_items"], 120)
             self.assertEqual(run["details"]["triage_candidates"], 4)
 
+    def test_successful_run_lookup_ignores_failures_and_other_days(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            database.initialize()
+            start = datetime(2026, 9, 2, tzinfo=timezone.utc)
+            database.record_run(
+                RunSummary("paper", start, start, 0, 0, 0, 0, 1)
+            )
+            database.record_run(
+                RunSummary(
+                    "news",
+                    start + timedelta(hours=1),
+                    start + timedelta(hours=2),
+                    20,
+                    3,
+                    3,
+                    4,
+                    1,
+                )
+            )
+
+            self.assertFalse(
+                database.has_successful_run(
+                    "paper", start, start + timedelta(days=1)
+                )
+            )
+            self.assertTrue(
+                database.has_successful_run(
+                    "news", start, start + timedelta(days=1)
+                )
+            )
+            self.assertFalse(
+                database.has_successful_run(
+                    "news",
+                    start + timedelta(days=1),
+                    start + timedelta(days=2),
+                )
+            )
+
     def test_publication_cutoff_excludes_older_history(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")

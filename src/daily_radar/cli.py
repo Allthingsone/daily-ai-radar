@@ -42,7 +42,7 @@ def _parser() -> argparse.ArgumentParser:
 
     collect = subparsers.add_parser("collect", help="运行真实网络采集")
     collect.add_argument(
-        "--kind", choices=("news", "paper", "all"), default="all"
+        "--kind", choices=("news", "paper", "all", "publish"), default="all"
     )
 
     seed = subparsers.add_parser("seed-demo", help="写入隔离的离线演示数据库")

@@ -35,7 +35,7 @@ network:
   retry_backoff_seconds: 1.0
   # arXiv asks clients to identify themselves. Replace the placeholder before
   # scheduling this project on a public server.
-  user_agent: "DailyAIRadar/0.7.0 (contact: replace-with-your-email@example.com)"
+  user_agent: "DailyAIRadar/0.8.0 (contact: replace-with-your-email@example.com)"
 
 llm:
   # DeepSeek 是语义入选的唯一裁判；没有 Key 或调用失败时任务会停止，
