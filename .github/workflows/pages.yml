@@ -20,7 +20,7 @@ on:
   schedule:
     # arXiv announces at 20:00 US Eastern: 08:00 Shanghai in daylight-saving
     # time and 09:00 in standard time. These are native GitHub fallbacks;
-    # Cloudflare's external watchdog supplies the punctual primary triggers.
+    # Alibaba Function Compute supplies the punctual primary triggers.
     - cron: "10 8 * * *"
       timezone: "Asia/Shanghai"
     - cron: "30 8 * * *"
@@ -111,7 +111,7 @@ jobs:
         if: steps.daily-guard.outputs.should_run == 'true'
         run: |
           python -m unittest discover -s tests -v
-          node --test cloudflare-worker/test/*.test.js
+          node --test aliyun-fc/test/*.test.js
 
       - name: Require an arXiv contact address
         if: steps.daily-guard.outputs.should_run == 'true'

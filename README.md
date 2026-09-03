@@ -5,9 +5,9 @@
 1. 聚合重大 AI 基座模型、重要工具/硬件、自动驾驶数据集与 Benchmark、重要且热议的科研成果，以及有可验证互动量的社区热议，并将同一事件的多个来源折叠到一起。
 2. 收集最新 MLLM/VLM/VLA 论文，但主 Feed 只接受同时以多模态模型和自动驾驶应用为实质核心的论文。
 
-当前版本是 **v0.8.0 早间准时交付版**。程序负责来源真实性、时间窗口、社区互动量、去重和 arXiv 身份校验。新闻与论文严格复筛使用 `deepseek-v4-pro` 的 Thinking `max`；当天论文的全量初筛使用同一个 V4-Pro 的非思考模式降低 Token 消耗。关键词分数不再决定正式 Feed，模型也不能凭空声明某条内容“很热”。
+当前版本是 **v0.8.1 阿里云准时交付版**。程序负责来源真实性、时间窗口、社区互动量、去重和 arXiv 身份校验。新闻与论文严格复筛使用 `deepseek-v4-pro` 的 Thinking `max`；当天论文的全量初筛使用同一个 V4-Pro 的非思考模式降低 Token 消耗。关键词分数不再决定正式 Feed，模型也不能凭空声明某条内容“很热”。
 
-## v0.8.0 已包含
+## v0.8.1 已包含
 
 - 16 个启用来源，包括官方博客、媒体、GitHub Releases、Hacker News 官方 API 与掘金人工智能热榜；Anthropic 和 CSDN 候选源因当前无法稳定核验发布时间而保留为禁用状态。
 - arXiv `cs.CV/cs.RO/cs.AI/cs.LG/cs.CL/cs.SY/eess.SY/eess.IV/stat.ML` 当天公告批次全量采集：按官方美东公告计划解析对应提交区间，自动分页到 `totalResults` 末尾，不再截断为 150 条。
@@ -26,7 +26,7 @@
 - SQLite 历史库、收藏/已读/不相关反馈。
 - FastAPI Dashboard，以及 JSON、Markdown、RSS 导出。
 - 可直接发布的 GitHub Pages 静态站点，支持内容类型、精选范围、论文日期和全文搜索切换。
-- Cloudflare Worker 在 07:15–07:55 准时触发新闻预筛，并从 08:05 起按美东夏/冬令时自动等待 arXiv 当天公告，再触发论文筛选、Pages 和邮件；目标是在北京时间 10:00 前完成。
+- 阿里云函数计算 FC 在 07:15–07:55 准时触发新闻预筛，并从 08:05 起按美东夏/冬令时自动等待 arXiv 当天公告，再触发论文筛选、Pages 和邮件；目标是在北京时间 10:00 前完成。
 - 发布阶段复用当天已完成的新闻状态；若邮件或 Pages 失败，后续重试也复用已完成的新闻/论文结果，避免重复消耗 Token。
 - GitHub Actions 自带的 08:10、08:30、08:50、09:10、09:30 定时继续作为独立兜底；首次完整成功后，其余触发按当日成功标记直接退出。
 - 逐条 URL 可达性检查、发布域名白名单和 arXiv ID 一致性校验。
@@ -218,11 +218,11 @@ python -m unittest discover -s tests -v
 - Actions Secret `DAILY_RADAR_EMAIL_USERNAME`：163 邮箱地址；
 - Actions Secret `DAILY_RADAR_EMAIL_AUTH_CODE`：163 客户端授权码，不是登录密码。
 
-要解决 GitHub 定时可能延迟数小时的问题，还需部署 [`cloudflare-worker/`](cloudflare-worker/) 中的外部触发器，并把仅限本仓库、具有 Actions 读写权限的 GitHub fine-grained token 保存为 Cloudflare Secret `GITHUB_ACTIONS_TOKEN`。该 Token 不进入 GitHub 仓库。
+要解决 GitHub 定时可能延迟数小时的问题，还需部署 [`aliyun-fc/`](aliyun-fc/) 中的事件函数，并把仅限本仓库、具有 Actions 读写权限的 GitHub fine-grained token 保存为阿里云 FC 环境变量 `GITHUB_ACTIONS_TOKEN`。该 Token 不进入 GitHub 仓库；需要隐藏控制台明文时可进一步接入 KMS。
 
 收件地址默认等于发件账号，不需要再设置第二个邮箱。自动日报把邮件发送视为完整成功的一部分：两个邮件 Secret 缺失或 SMTP 发送失败时不会写入当日成功标记，后续备用时间会继续重试，并保留上一版成功的 Pages。
 
-完整的 Pages/邮件设置见 [`docs/GITHUB_PAGES.md`](docs/GITHUB_PAGES.md)，10 点前交付所需的 Cloudflare 设置见 [`docs/CLOUDFLARE_DISPATCHER.md`](docs/CLOUDFLARE_DISPATCHER.md)。
+完整的 Pages/邮件设置见 [`docs/GITHUB_PAGES.md`](docs/GITHUB_PAGES.md)，10 点前交付所需的阿里云设置见 [`docs/ALIYUN_FC_DISPATCHER.md`](docs/ALIYUN_FC_DISPATCHER.md)。
 
 ## 命令与 API
 
@@ -289,6 +289,6 @@ tests/                      离线单元测试
 data/                       本地数据库（默认不提交）
 outputs/                    导出结果（默认不提交）
 site/                       本地 Pages 构建结果（默认不提交）
-cloudflare-worker/          准时检查并触发 GitHub Actions 的外部闹钟
+aliyun-fc/                 准时检查并触发 GitHub Actions 的阿里云事件函数
 .github/workflows/pages.yml 每日采集与 GitHub Pages 发布
 ```

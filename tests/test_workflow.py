@@ -39,6 +39,8 @@ class WorkflowScheduleTests(unittest.TestCase):
         jobs = workflow["jobs"]
         self.assertIn("mark-success", jobs)
         self.assertIn("daily-radar-success-", path.read_text(encoding="utf-8"))
+        self.assertIn("aliyun-fc/test/*.test.js", path.read_text(encoding="utf-8"))
+        self.assertNotIn("cloudflare-worker", path.read_text(encoding="utf-8"))
         email_step = next(
             step
             for step in jobs["build"]["steps"]
@@ -62,23 +64,40 @@ class WorkflowScheduleTests(unittest.TestCase):
         self.assertIn("daily-radar collect --kind all", publish_step["run"])
         self.assertIn("phase == 'publish'", jobs["deploy"]["if"])
 
-    def test_cloudflare_watchdog_has_news_and_publish_retries(self):
-        config_path = ROOT / "cloudflare-worker" / "wrangler.json"
+    def test_aliyun_watchdog_has_news_and_publish_retries(self):
+        config_path = ROOT / "aliyun-fc" / "deployment-config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
 
         self.assertEqual(
-            config["triggers"]["crons"],
+            [trigger["cron"] for trigger in config["triggers"]],
             [
-                "15,35,55 23 * * *",
-                "5,20,35,50 0 * * *",
-                "5,20,35 1 * * *",
+                "CRON_TZ=Asia/Shanghai 0 15,35,55 7 * * *",
+                "CRON_TZ=Asia/Shanghai 0 5,20,35,50 8 * * *",
+                "CRON_TZ=Asia/Shanghai 0 5,20,35 9 * * *",
             ],
         )
-        self.assertEqual(config["vars"]["GITHUB_REPO"], "daily-ai-radar")
         self.assertEqual(
-            config["secrets"]["required"], ["GITHUB_ACTIONS_TOKEN"]
+            [trigger["payload"] for trigger in config["triggers"]],
+            [
+                '{"phase":"news"}',
+                '{"phase":"publish"}',
+                '{"phase":"publish"}',
+            ],
         )
-        self.assertNotIn("GITHUB_ACTIONS_TOKEN", config["vars"])
+        self.assertEqual(config["function"]["runtime"], "nodejs20")
+        self.assertEqual(config["function"]["handler"], "index.handler")
+        self.assertEqual(config["function"]["timeout_seconds"], 60)
+        self.assertTrue(config["function"]["internet_access"])
+        self.assertEqual(
+            config["environment_values_except_token"]["GITHUB_REPO"],
+            "daily-ai-radar",
+        )
+        self.assertIn(
+            "GITHUB_ACTIONS_TOKEN", config["required_environment_variables"]
+        )
+        self.assertNotIn(
+            "GITHUB_ACTIONS_TOKEN", config["environment_values_except_token"]
+        )
 
 
 if __name__ == "__main__":

@@ -1,14 +1,16 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+"use strict";
 
-import {
-  NEWS_CRON,
+const assert = require("node:assert/strict");
+const test = require("node:test");
+
+const {
   expectedArxivReleaseMinute,
-  handleScheduled,
+  handleTimer,
   mayStartPublish,
-  phaseForCron,
+  parseTimerEvent,
+  requestFromTimerEvent,
   shanghaiDate,
-} from "../src/index.js";
+} = require("../index.js");
 
 const ENV = {
   GITHUB_OWNER: "Allthingsone",
@@ -17,11 +19,32 @@ const ENV = {
   GITHUB_REF: "main",
   PAGES_LATEST_URL: "https://allthingsone.github.io/daily-ai-radar/data/latest.json",
   GITHUB_ACTIONS_TOKEN: "test-token",
+  HTTP_TIMEOUT_MS: "15000",
 };
 
-test("cron routes news pre-screening separately from publication", () => {
-  assert.equal(phaseForCron(NEWS_CRON), "news");
-  assert.equal(phaseForCron("5,20,35,50 0 * * *"), "publish");
+test("Alibaba timer event and JSON payload are parsed", () => {
+  const event = parseTimerEvent(
+    Buffer.from(
+      JSON.stringify({
+        triggerTime: "2026-09-02T23:15:00Z",
+        triggerName: "daily-radar-news",
+        payload: '{"phase":"news","dry_run":true}',
+      }),
+    ),
+  );
+  assert.deepEqual(requestFromTimerEvent(event), { phase: "news", dryRun: true });
+  assert.deepEqual(requestFromTimerEvent({ payload: "publish" }), {
+    phase: "publish",
+    dryRun: false,
+  });
+});
+
+test("unsupported or missing timer phases fail closed", () => {
+  assert.throws(() => requestFromTimerEvent({ payload: "paper" }), /Timer payload/);
+  assert.throws(
+    () => requestFromTimerEvent({ payload: '{"dry_run":true}' }),
+    /Unsupported timer phase/,
+  );
 });
 
 test("Shanghai date conversion is independent of the UTC calendar day", () => {
@@ -48,10 +71,10 @@ test("weekends can publish a truthful news-only digest at the first check", () =
 
 test("watchdog makes no network call before the winter arXiv boundary", async () => {
   let called = false;
-  const result = await handleScheduled(
+  const result = await handleTimer(
     {
-      cron: "5,20,35,50 0 * * *",
-      scheduledTime: Date.parse("2026-12-03T00:50:00Z"),
+      triggerTime: "2026-12-03T00:50:00Z",
+      payload: '{"phase":"publish"}',
     },
     ENV,
     async () => {
@@ -65,10 +88,10 @@ test("watchdog makes no network call before the winter arXiv boundary", async ()
 
 test("watchdog stops when Pages already contains today's digest", async () => {
   let calls = 0;
-  const result = await handleScheduled(
+  const result = await handleTimer(
     {
-      cron: "5,20,35,50 0 * * *",
-      scheduledTime: Date.parse("2026-09-03T00:20:00Z"),
+      triggerTime: "2026-09-03T00:20:00Z",
+      payload: '{"phase":"publish"}',
     },
     ENV,
     async () => {
@@ -108,10 +131,10 @@ test("successful news pre-screen suppresses later news retry", async () => {
     };
   };
 
-  const result = await handleScheduled(
+  const result = await handleTimer(
     {
-      cron: NEWS_CRON,
-      scheduledTime: Date.parse("2026-09-02T23:35:00Z"),
+      triggerTime: "2026-09-02T23:35:00Z",
+      payload: '{"phase":"news"}',
     },
     ENV,
     fakeFetch,
@@ -119,6 +142,34 @@ test("successful news pre-screen suppresses later news retry", async () => {
 
   assert.equal(result.reason, "phase-complete");
   assert.equal(calls, 2);
+});
+
+test("safe dry-run checks state but never posts a dispatch", async () => {
+  const calls = [];
+  const fakeFetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).includes("latest.json")) {
+      return { ok: false, status: 404 };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ workflow_runs: [] }),
+    };
+  };
+
+  const result = await handleTimer(
+    {
+      triggerTime: "2026-09-02T23:15:00Z",
+      payload: '{"phase":"news","dry_run":true}',
+    },
+    ENV,
+    fakeFetch,
+  );
+
+  assert.equal(result.reason, "dry-run-would-dispatch");
+  assert.equal(calls.length, 2);
+  assert.equal(calls.some((call) => call.options.method === "POST"), false);
 });
 
 test("watchdog dispatches the requested phase when no run is active", async () => {
@@ -138,10 +189,10 @@ test("watchdog dispatches the requested phase when no run is active", async () =
     return { ok: true, status: 200, text: async () => "" };
   };
 
-  const result = await handleScheduled(
+  const result = await handleTimer(
     {
-      cron: "5,20,35,50 0 * * *",
-      scheduledTime: Date.parse("2026-09-03T00:05:00Z"),
+      triggerTime: "2026-09-03T00:05:00Z",
+      payload: '{"phase":"publish"}',
     },
     ENV,
     fakeFetch,
@@ -173,10 +224,10 @@ test("watchdog does not dispatch while this workflow is active", async () => {
     };
   };
 
-  const result = await handleScheduled(
+  const result = await handleTimer(
     {
-      cron: "5,20,35,50 0 * * *",
-      scheduledTime: Date.parse("2026-09-03T00:05:00Z"),
+      triggerTime: "2026-09-03T00:05:00Z",
+      payload: '{"phase":"publish"}',
     },
     ENV,
     fakeFetch,
@@ -184,4 +235,13 @@ test("watchdog does not dispatch while this workflow is active", async () => {
 
   assert.equal(result.reason, "workflow-active");
   assert.equal(calls, 2);
+});
+
+test("missing token is reported by name without exposing any value", async () => {
+  const env = { ...ENV };
+  delete env.GITHUB_ACTIONS_TOKEN;
+  await assert.rejects(
+    handleTimer({ payload: "news" }, env, async () => undefined),
+    /GITHUB_ACTIONS_TOKEN/,
+  );
 });

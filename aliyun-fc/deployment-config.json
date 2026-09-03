@@ -1,0 +1,44 @@
+{
+  "function": {
+    "name": "daily-ai-radar-dispatcher",
+    "type": "event",
+    "runtime": "nodejs20",
+    "handler": "index.handler",
+    "memory_mb": 128,
+    "timeout_seconds": 60,
+    "internet_access": true
+  },
+  "required_environment_variables": [
+    "GITHUB_ACTIONS_TOKEN",
+    "GITHUB_OWNER",
+    "GITHUB_REPO",
+    "GITHUB_WORKFLOW",
+    "GITHUB_REF",
+    "PAGES_LATEST_URL"
+  ],
+  "environment_values_except_token": {
+    "GITHUB_OWNER": "Allthingsone",
+    "GITHUB_REPO": "daily-ai-radar",
+    "GITHUB_WORKFLOW": "pages.yml",
+    "GITHUB_REF": "main",
+    "PAGES_LATEST_URL": "https://allthingsone.github.io/daily-ai-radar/data/latest.json",
+    "HTTP_TIMEOUT_MS": "15000"
+  },
+  "triggers": [
+    {
+      "name": "daily-radar-news",
+      "cron": "CRON_TZ=Asia/Shanghai 0 15,35,55 7 * * *",
+      "payload": "{\"phase\":\"news\"}"
+    },
+    {
+      "name": "daily-radar-publish-8",
+      "cron": "CRON_TZ=Asia/Shanghai 0 5,20,35,50 8 * * *",
+      "payload": "{\"phase\":\"publish\"}"
+    },
+    {
+      "name": "daily-radar-publish-9",
+      "cron": "CRON_TZ=Asia/Shanghai 0 5,20,35 9 * * *",
+      "payload": "{\"phase\":\"publish\"}"
+    }
+  ]
+}

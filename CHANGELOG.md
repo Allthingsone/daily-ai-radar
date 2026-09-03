@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1 - 2026-09-03
+
+- Replaced the blocked Cloudflare Worker deployment with an Alibaba Cloud Function Compute 3.0 event function that requires no public HTTP endpoint or `workers.dev` subdomain.
+- Added three explicit `CRON_TZ=Asia/Shanghai` timer groups for 07:15–07:55 news screening and 08:05–09:35 arXiv-aware publication retries.
+- Preserved Pages freshness, completed-phase, active-run, US daylight-saving, weekend and GitHub-side daily-success duplicate guards.
+- Added a non-dispatching `dry_run` mode, outbound request timeouts, a secret-free deployment checklist and Node regression tests for the Alibaba timer event format.
+- Kept the five GitHub-native schedules as an independent fallback and moved CI coverage from the retired Cloudflare implementation to the Alibaba FC function.
+
 ## 0.8.0 - 2026-09-03
 
 - Added a Cloudflare Worker watchdog that checks at 07:15–07:55 for news pre-screening and every 15 minutes from 08:05–09:35 for final publication.

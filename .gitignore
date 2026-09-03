@@ -17,6 +17,7 @@ cloudflare-worker/node_modules/
 cloudflare-worker/.wrangler/
 cloudflare-worker/.dev.vars*
 cloudflare-worker/.env*
-!cloudflare-worker/.dev.vars.example
+aliyun-fc/node_modules/
+aliyun-fc/daily-ai-radar-fc.zip
 !data/.gitkeep
 !outputs/.gitkeep

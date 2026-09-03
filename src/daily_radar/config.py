@@ -70,7 +70,7 @@ class PaperSettings:
 @dataclass(frozen=True)
 class NetworkSettings:
     timeout_seconds: int = 25
-    user_agent: str = "DailyAIRadar/0.8.0 (+https://github.com/your-name/daily-ai-radar)"
+    user_agent: str = "DailyAIRadar/0.8.1 (+https://github.com/your-name/daily-ai-radar)"
     retries: int = 2
     retry_backoff_seconds: float = 1.0
 

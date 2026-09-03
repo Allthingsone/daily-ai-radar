@@ -1,0 +1,12 @@
+{
+  "name": "daily-ai-radar-aliyun-fc-dispatcher",
+  "version": "0.8.1",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "package": "zip -FS daily-ai-radar-fc.zip index.js package.json"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
