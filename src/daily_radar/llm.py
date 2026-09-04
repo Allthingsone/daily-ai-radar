@@ -700,7 +700,7 @@ class DeepSeekScreener:
             headers={
                 "Authorization": f"Bearer {self.settings.api_key}",
                 "Content-Type": "application/json",
-                "User-Agent": "DailyAIRadar/0.8.1",
+                "User-Agent": "DailyAIRadar/0.8.2",
             },
         )
         try:

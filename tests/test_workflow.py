@@ -64,25 +64,17 @@ class WorkflowScheduleTests(unittest.TestCase):
         self.assertIn("daily-radar collect --kind all", publish_step["run"])
         self.assertIn("phase == 'publish'", jobs["deploy"]["if"])
 
-    def test_aliyun_watchdog_has_news_and_publish_retries(self):
+    def test_aliyun_watchdog_uses_a_simple_interval_and_auto_phase(self):
         config_path = ROOT / "aliyun-fc" / "deployment-config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
 
         self.assertEqual(
             [trigger["cron"] for trigger in config["triggers"]],
-            [
-                "CRON_TZ=Asia/Shanghai 0 15,35,55 7 * * *",
-                "CRON_TZ=Asia/Shanghai 0 5,20,35,50 8 * * *",
-                "CRON_TZ=Asia/Shanghai 0 5,20,35 9 * * *",
-            ],
+            ["@every 10m"],
         )
         self.assertEqual(
             [trigger["payload"] for trigger in config["triggers"]],
-            [
-                '{"phase":"news"}',
-                '{"phase":"publish"}',
-                '{"phase":"publish"}',
-            ],
+            ['{"phase":"auto"}'],
         )
         self.assertEqual(config["function"]["runtime"], "nodejs20")
         self.assertEqual(config["function"]["handler"], "index.handler")

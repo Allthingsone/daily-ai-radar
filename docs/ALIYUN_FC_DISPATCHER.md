@@ -6,15 +6,15 @@ GitHub Actions 的 `schedule` 可能延迟，因此本项目使用阿里云函�
 
 ## 实际时间表
 
-三个触发器都显式使用 `CRON_TZ=Asia/Shanghai`，无需人工换算 UTC：
+只创建一个“每 10 分钟”的间隔触发器，不再依赖控制台对复合 CRON 和时区前缀的解释：
 
-| 触发器 | 北京时间 | 触发消息 | 行为 |
+| 触发器 | 周期 | 触发消息 | 行为 |
 | --- | --- | --- | --- |
-| `daily-radar-news` | 07:15 / 07:35 / 07:55 | `{"phase":"news"}` | 采集、验证并预筛新闻 |
-| `daily-radar-publish-8` | 08:05 / 08:20 / 08:35 / 08:50 | `{"phase":"publish"}` | 美东夏令时的论文发布检查与重试 |
-| `daily-radar-publish-9` | 09:05 / 09:20 / 09:35 | `{"phase":"publish"}` | 美东标准时间或 arXiv 索引延迟时的检查与重试 |
+| `daily-radar-watchdog` | 每 10 分钟 | `{"phase":"auto"}` | 由代码按北京时间自动选择新闻、发布或立即跳过 |
 
-调度器会动态读取 `America/New_York` 的夏令时状态。工作日只有达到 arXiv 当天公告时间后才允许触发 `publish`；周末没有新公告，会在第一次发布检查时生成真实的新闻日报。每次检查还会读取 Pages 日期、GitHub 中已成功的同阶段任务和正在运行的任务，以避免重复消耗 DeepSeek Token 或重复发信。
+北京时间 07:00–10:30 之外，函数会在访问 Pages 或 GitHub 前立即返回 `outside-window`。窗口内，调度器会动态读取 `America/New_York` 的夏令时状态：arXiv 公告边界前选择 `news`，边界后选择 `publish`。工作日只有达到 arXiv 当天公告时间后才允许发布；周末没有新公告，会在公告边界后的第一次检查生成真实的新闻日报。
+
+每次有效检查还会读取 Pages 日期、GitHub 中已成功的同阶段任务和正在运行的任务，以避免重复消耗 DeepSeek Token 或重复发信。一天会唤醒函数 144 次，但绝大多数调用只做本地时间判断并立即结束。
 
 GitHub 自带的 08:10、08:30、08:50、09:10、09:30 五个定时仍保留作独立兜底。
 
@@ -93,31 +93,23 @@ HTTP_TIMEOUT_MS=15000
 
 如果出现 `HTTP 401/403`，先检查 Token 是否仍有效、是否只授权了正确仓库，以及 `Actions: Read and write` 是否保存成功。如果连接超时，确认公网访问已开启，并考虑切换到中国香港地域。
 
-## 创建三个定时触发器
+## 创建一个间隔触发器
 
-在函数详情选择 **触发器 → 创建触发器 → 定时触发器 → 自定义**，逐个创建：
-
-```text
-名称：daily-radar-news
-Cron：CRON_TZ=Asia/Shanghai 0 15,35,55 7 * * *
-触发消息：{"phase":"news"}
-```
+先上传本版本重新生成的 `daily-ai-radar-fc.zip` 并部署代码，再进入 **触发器 → 创建触发器 → 定时触发器**：
 
 ```text
-名称：daily-radar-publish-8
-Cron：CRON_TZ=Asia/Shanghai 0 5,20,35,50 8 * * *
-触发消息：{"phase":"publish"}
+名称：daily-radar-watchdog
+触发方式：时间间隔
+时间间隔：10 分钟
+触发消息：{"phase":"auto"}
+启用触发器：开启
 ```
 
-```text
-名称：daily-radar-publish-9
-Cron：CRON_TZ=Asia/Shanghai 0 5,20,35 9 * * *
-触发消息：{"phase":"publish"}
-```
+如果控制台要求直接输入表达式，填写 `@every 10m`。创建后确认状态为“启用”。旧的 `daily-radar-news`、`daily-radar-publish-8`、`daily-radar-publish-9` 可以先禁用；新触发器验证成功后再删除。
 
-创建后检查三个触发器均为启用状态，并核对控制台展示的下一次触发时间确实是北京时间。正式端到端测试时，可以把安全测试事件中的 `dry_run` 改为 `false`；这会真实启动 GitHub 工作流，并可能产生 DeepSeek 用量和邮件，因此只执行一次。
+在非投递窗口看到 `outside-window` 是正常结果。正式端到端测试时，可以给手动测试事件设置一个 07:00–10:30 内的 `triggerTime` 并保留 `dry_run=true`；预期返回 `dry-run-would-dispatch`、`already-published`、`phase-complete` 或 `workflow-active`，不会产生 DeepSeek 用量或邮件。
 
-日志只会记录 `dispatch`、`already-published`、`phase-complete`、`workflow-active`、`arxiv-not-ready` 或 `dry-run-would-dispatch` 以及请求 ID，不会打印 Token。
+日志只会记录 `dispatch`、`already-published`、`phase-complete`、`workflow-active`、`arxiv-not-ready`、`outside-window` 或 `dry-run-would-dispatch` 以及请求 ID，不会打印 Token。
 
 ## Cloudflare 迁移收尾
 
@@ -126,7 +118,7 @@ Cron：CRON_TZ=Asia/Shanghai 0 5,20,35 9 * * *
 ## 官方参考
 
 - [阿里云：创建事件函数](https://help.aliyun.com/zh/functioncompute/creating-an-event-function)
-- [阿里云：定时触发器与 `CRON_TZ`](https://help.aliyun.com/zh/functioncompute/time-triggers)
+- [阿里云：定时触发器与时间间隔表达式](https://help.aliyun.com/zh/functioncompute/time-triggers)
 - [阿里云：Node.js Handler](https://help.aliyun.com/zh/functioncompute/request-handlers)
 - [阿里云：环境变量安全](https://help.aliyun.com/zh/functioncompute/environment-variables)
 - [阿里云：函数网络配置](https://help.aliyun.com/zh/functioncompute/configure-network-settings)

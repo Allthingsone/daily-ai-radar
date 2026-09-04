@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="daily-ai-radar",
-    version="0.8.1",
+    version="0.8.2",
     description="Daily AI news and MLLM/VLA autonomous-driving paper radar",
     package_dir={"": "src"},
     packages=find_packages("src"),

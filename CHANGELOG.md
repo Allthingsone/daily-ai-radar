@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 - 2026-09-04
+
+- Replaced the three custom Alibaba FC CRON groups with one `@every 10m` interval watchdog after production evidence showed no scheduled `workflow_dispatch` events.
+- Added an automatic phase resolver that only performs network checks from 07:00 through 10:30 Shanghai time and switches from news pre-screening to arXiv-aware publication at the US Eastern announcement boundary.
+- Preserved Pages, active-run, per-phase, and final-delivery duplicate guards so interval wakeups cannot repeatedly spend DeepSeek tokens or send duplicate mail.
+
 ## 0.8.1 - 2026-09-03
 
 - Replaced the blocked Cloudflare Worker deployment with an Alibaba Cloud Function Compute 3.0 event function that requires no public HTTP endpoint or `workers.dev` subdomain.

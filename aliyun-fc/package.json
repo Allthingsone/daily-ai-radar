@@ -1,6 +1,6 @@
 {
   "name": "daily-ai-radar-aliyun-fc-dispatcher",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "scripts": {
     "test": "node --test test/*.test.js",

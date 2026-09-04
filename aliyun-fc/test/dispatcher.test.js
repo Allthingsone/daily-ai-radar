@@ -9,6 +9,7 @@ const {
   mayStartPublish,
   parseTimerEvent,
   requestFromTimerEvent,
+  resolveAutomaticPhase,
   shanghaiDate,
 } = require("../index.js");
 
@@ -35,6 +36,10 @@ test("Alibaba timer event and JSON payload are parsed", () => {
   assert.deepEqual(requestFromTimerEvent(event), { phase: "news", dryRun: true });
   assert.deepEqual(requestFromTimerEvent({ payload: "publish" }), {
     phase: "publish",
+    dryRun: false,
+  });
+  assert.deepEqual(requestFromTimerEvent({ payload: '{"phase":"auto"}' }), {
+    phase: "auto",
     dryRun: false,
   });
 });
@@ -65,6 +70,16 @@ test("arXiv readiness follows US daylight-saving time", () => {
   assert.equal(mayStartPublish(winterReady), true);
 });
 
+test("automatic interval phase uses Shanghai time and the arXiv boundary", () => {
+  assert.equal(resolveAutomaticPhase(new Date("2026-09-02T22:59:00Z")), null);
+  assert.equal(resolveAutomaticPhase(new Date("2026-09-02T23:05:00Z")), "news");
+  assert.equal(resolveAutomaticPhase(new Date("2026-09-02T23:59:00Z")), "news");
+  assert.equal(resolveAutomaticPhase(new Date("2026-09-03T00:00:00Z")), "publish");
+  assert.equal(resolveAutomaticPhase(new Date("2026-12-03T00:50:00Z")), "news");
+  assert.equal(resolveAutomaticPhase(new Date("2026-12-03T01:00:00Z")), "publish");
+  assert.equal(resolveAutomaticPhase(new Date("2026-09-03T02:31:00Z")), null);
+});
+
 test("weekends can publish a truthful news-only digest at the first check", () => {
   assert.equal(mayStartPublish(new Date("2026-09-04T23:05:00Z")), true);
 });
@@ -84,6 +99,59 @@ test("watchdog makes no network call before the winter arXiv boundary", async ()
 
   assert.equal(result.reason, "arxiv-not-ready");
   assert.equal(called, false);
+});
+
+test("automatic interval calls outside the delivery window make no network request", async () => {
+  let called = false;
+  const result = await handleTimer(
+    {
+      triggerTime: "2026-09-03T02:31:00Z",
+      payload: '{"phase":"auto"}',
+    },
+    ENV,
+    async () => {
+      called = true;
+    },
+  );
+
+  assert.equal(result.reason, "outside-window");
+  assert.equal(result.phase, "auto");
+  assert.equal(called, false);
+});
+
+test("automatic interval resolves to news before the summer release", async () => {
+  const calls = [];
+  const fakeFetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).includes("latest.json")) {
+      return { ok: false, status: 404 };
+    }
+    if (String(url).includes("/runs?")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ workflow_runs: [] }),
+      };
+    }
+    return { ok: true, status: 204, text: async () => "" };
+  };
+
+  const result = await handleTimer(
+    {
+      triggerTime: "2026-09-02T23:05:00Z",
+      payload: '{"phase":"auto"}',
+    },
+    ENV,
+    fakeFetch,
+  );
+
+  assert.equal(result.action, "dispatch");
+  assert.equal(result.phase, "news");
+  assert.equal(result.requestedPhase, "auto");
+  assert.deepEqual(JSON.parse(calls[2].options.body).inputs, {
+    phase: "news",
+    force: "false",
+  });
 });
 
 test("watchdog stops when Pages already contains today's digest", async () => {

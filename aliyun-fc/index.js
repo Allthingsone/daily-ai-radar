@@ -2,7 +2,9 @@
 
 const SHANGHAI_TIMEZONE = "Asia/Shanghai";
 const NEW_YORK_TIMEZONE = "America/New_York";
-const VALID_PHASES = new Set(["news", "publish"]);
+const VALID_PHASES = new Set(["news", "publish", "auto"]);
+const AUTO_WINDOW_START_MINUTE = 7 * 60;
+const AUTO_WINDOW_END_MINUTE = 10 * 60 + 30;
 const REQUIRED_ENVIRONMENT = [
   "GITHUB_ACTIONS_TOKEN",
   "GITHUB_OWNER",
@@ -65,14 +67,14 @@ function requestFromTimerEvent(timerEvent) {
         payload = JSON.parse(text);
       } catch (error) {
         throw new Error(
-          'Timer payload must be "news", "publish", or JSON such as {"phase":"news"}',
+          'Timer payload must be "news", "publish", "auto", or JSON such as {"phase":"auto"}',
         );
       }
     }
   }
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error(
-      'Timer payload must be "news", "publish", or JSON such as {"phase":"news"}',
+      'Timer payload must be "news", "publish", "auto", or JSON such as {"phase":"auto"}',
     );
   }
 
@@ -135,6 +137,14 @@ function expectedArxivReleaseMinute(date) {
   // saving time and 09:00 during standard time.
   const raw = 20 * 60 - newYorkOffsetMinutes(date) + 8 * 60;
   return ((raw % (24 * 60)) + 24 * 60) % (24 * 60);
+}
+
+function resolveAutomaticPhase(date) {
+  const minute = shanghaiMinuteOfDay(date);
+  if (minute < AUTO_WINDOW_START_MINUTE || minute > AUTO_WINDOW_END_MINUTE) {
+    return null;
+  }
+  return minute < expectedArxivReleaseMinute(date) ? "news" : "publish";
 }
 
 function mayStartPublish(date) {
@@ -252,20 +262,45 @@ async function dispatchWorkflow(env, phase, fetchImpl) {
 async function handleTimer(event, env, fetchImpl = fetch) {
   validateEnvironment(env);
   const timerEvent = parseTimerEvent(event);
-  const { phase, dryRun } = requestFromTimerEvent(timerEvent);
+  const { phase: requestedPhase, dryRun } = requestFromTimerEvent(timerEvent);
   const now = new Date(timerEvent.triggerTime || Date.now());
   if (Number.isNaN(now.getTime())) {
     throw new Error(`Invalid timer triggerTime: ${timerEvent.triggerTime}`);
   }
   const localDate = shanghaiDate(now);
+  const phase = requestedPhase === "auto" ? resolveAutomaticPhase(now) : requestedPhase;
+  if (!phase) {
+    return {
+      action: "skip",
+      reason: "outside-window",
+      phase: requestedPhase,
+      localDate,
+      dryRun,
+    };
+  }
+  const requestMetadata = requestedPhase === "auto" ? { requestedPhase } : {};
 
   if (phase === "publish" && !mayStartPublish(now)) {
-    return { action: "skip", reason: "arxiv-not-ready", phase, localDate, dryRun };
+    return {
+      action: "skip",
+      reason: "arxiv-not-ready",
+      phase,
+      localDate,
+      dryRun,
+      ...requestMetadata,
+    };
   }
 
   try {
     if (await pageAlreadyPublished(env, now, fetchImpl)) {
-      return { action: "skip", reason: "already-published", phase, localDate, dryRun };
+      return {
+        action: "skip",
+        reason: "already-published",
+        phase,
+        localDate,
+        dryRun,
+        ...requestMetadata,
+      };
     }
   } catch (error) {
     // An unreachable Pages CDN must not suppress the GitHub-side duplicate
@@ -275,17 +310,38 @@ async function handleTimer(event, env, fetchImpl = fetch) {
 
   const runs = await workflowRuns(env, fetchImpl);
   if (completedPhaseToday(runs, phase, localDate)) {
-    return { action: "skip", reason: "phase-complete", phase, localDate, dryRun };
+    return {
+      action: "skip",
+      reason: "phase-complete",
+      phase,
+      localDate,
+      dryRun,
+      ...requestMetadata,
+    };
   }
   if (activeRunExists(runs)) {
-    return { action: "skip", reason: "workflow-active", phase, localDate, dryRun };
+    return {
+      action: "skip",
+      reason: "workflow-active",
+      phase,
+      localDate,
+      dryRun,
+      ...requestMetadata,
+    };
   }
   if (dryRun) {
-    return { action: "skip", reason: "dry-run-would-dispatch", phase, localDate, dryRun };
+    return {
+      action: "skip",
+      reason: "dry-run-would-dispatch",
+      phase,
+      localDate,
+      dryRun,
+      ...requestMetadata,
+    };
   }
 
   await dispatchWorkflow(env, phase, fetchImpl);
-  return { action: "dispatch", phase, localDate, dryRun };
+  return { action: "dispatch", phase, localDate, dryRun, ...requestMetadata };
 }
 
 async function handler(event, context) {
@@ -307,5 +363,6 @@ module.exports = {
   mayStartPublish,
   parseTimerEvent,
   requestFromTimerEvent,
+  resolveAutomaticPhase,
   shanghaiDate,
 };

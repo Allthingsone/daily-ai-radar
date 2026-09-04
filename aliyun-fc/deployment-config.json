@@ -26,19 +26,9 @@
   },
   "triggers": [
     {
-      "name": "daily-radar-news",
-      "cron": "CRON_TZ=Asia/Shanghai 0 15,35,55 7 * * *",
-      "payload": "{\"phase\":\"news\"}"
-    },
-    {
-      "name": "daily-radar-publish-8",
-      "cron": "CRON_TZ=Asia/Shanghai 0 5,20,35,50 8 * * *",
-      "payload": "{\"phase\":\"publish\"}"
-    },
-    {
-      "name": "daily-radar-publish-9",
-      "cron": "CRON_TZ=Asia/Shanghai 0 5,20,35 9 * * *",
-      "payload": "{\"phase\":\"publish\"}"
+      "name": "daily-radar-watchdog",
+      "cron": "@every 10m",
+      "payload": "{\"phase\":\"auto\"}"
     }
   ]
 }
