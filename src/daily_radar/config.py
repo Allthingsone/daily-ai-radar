@@ -52,6 +52,8 @@ class PaperSettings:
     page_size: int = 200
     page_delay_seconds: float = 3.0
     max_important: int = 20
+    # Actual deferred mailing dates in US Eastern time, confirmed by arXiv.
+    deferred_announcement_dates: List[str] = field(default_factory=list)
     categories: List[str] = field(
         default_factory=lambda: [
             "cs.CV",

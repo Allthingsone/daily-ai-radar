@@ -18,6 +18,11 @@ papers:
   page_size: 200
   page_delay_seconds: 3.0
   max_important: 20
+  # 官方确认停发的美东公告日期；不把所有美国节假日都当成停发日。
+  # https://info.arxiv.org/help/availability.html#2026-holidays
+  # 9 月 4 日 14:00 至 9 月 8 日 14:00 的投稿合并到美东 9 月 8 日公告。
+  deferred_announcement_dates:
+    - "2026-09-07"
   categories:
     - cs.CV
     - cs.RO

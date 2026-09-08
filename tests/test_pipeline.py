@@ -165,6 +165,36 @@ class PipelinePaperTests(unittest.TestCase):
             collect_papers.assert_not_called()
             collect_news.assert_not_called()
 
+    def test_publish_on_confirmed_arxiv_closure_reuses_news_and_records_success(self):
+        fixed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            settings = replace(load_settings(), database_path=database.path)
+            pipeline = RadarPipeline(settings, database)
+            pipeline.screener = FakeTwoStageScreener()
+            database.record_run(
+                RunSummary("news", fixed, fixed, 25, 4, 4, 5, 0)
+            )
+
+            with patch("daily_radar.pipeline.datetime") as clock, patch(
+                "daily_radar.collectors.arxiv.fetch_response"
+            ) as fetch, patch.object(pipeline, "collect_news") as collect_news:
+                clock.now.return_value = fixed
+                summaries = pipeline.collect("publish")
+                retry_summaries = pipeline.collect("publish")
+
+            self.assertEqual(len(summaries), 1)
+            summary = summaries[0]
+            self.assertEqual(summary.kind, "paper")
+            self.assertEqual(summary.sources_failed, 0)
+            self.assertEqual(summary.fetched, 0)
+            self.assertEqual(summary.details["announcement_status"], "not_scheduled")
+            self.assertEqual(summary.details["strict_screened"], 0)
+            self.assertEqual(retry_summaries, [])
+            self.assertEqual(database.stats()["papers"], 0)
+            collect_news.assert_not_called()
+            fetch.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

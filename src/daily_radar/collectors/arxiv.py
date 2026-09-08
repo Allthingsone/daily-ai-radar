@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -21,6 +21,7 @@ from .base import fetch_response
 
 
 ARXIV_API = "https://export.arxiv.org/api/query"
+ARXIV_CALENDAR_URL = "https://info.arxiv.org/help/availability.html"
 ARXIV_EASTERN_TIMEZONE = "America/New_York"
 ARXIV_ANNOUNCEMENT_WEEKDAYS = {0, 1, 2, 3, 6}  # Monday-Thursday and Sunday
 
@@ -50,6 +51,10 @@ class ArxivCollector:
         self.timezone_name = timezone_name
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._sleep = sleeper or time.sleep
+        self._deferred_announcements = {
+            date.fromisoformat(str(day))
+            for day in papers.deferred_announcement_dates
+        }
 
     def daily_window(
         self, now: Optional[datetime] = None
@@ -67,6 +72,20 @@ class ArxivCollector:
             local_end.astimezone(timezone.utc),
         )
 
+    def _is_announcement_day(self, value: datetime) -> bool:
+        return (
+            value.weekday() in ARXIV_ANNOUNCEMENT_WEEKDAYS
+            and value.date() not in self._deferred_announcements
+        )
+
+    @staticmethod
+    def _submission_deadline(announcement: datetime) -> datetime:
+        # Sunday's mailing uses Friday's deadline; all other mailings use
+        # their own day's deadline, in Eastern time even across DST changes.
+        if announcement.weekday() == 6:
+            announcement -= timedelta(days=2)
+        return announcement.replace(hour=14, minute=0, second=0, microsecond=0)
+
     def announcement_window(
         self, now: Optional[datetime] = None
     ) -> Tuple[datetime, datetime, datetime]:
@@ -74,7 +93,9 @@ class ArxivCollector:
 
         arXiv announces at 20:00 US Eastern on Sunday through Thursday.  The
         official schedule maps each mailing to a submission interval ending at
-        14:00 Eastern.  The returned tuple is
+        14:00 Eastern. Confirmed deferred mailings are skipped, and their
+        submission intervals carry forward to the next actual mailing.
+        The returned tuple is
         ``(submitted_since, submitted_before, announced_at)`` in UTC.
         """
 
@@ -87,22 +108,14 @@ class ArxivCollector:
         )
         if eastern < announcement:
             announcement -= timedelta(days=1)
-        while announcement.weekday() not in ARXIV_ANNOUNCEMENT_WEEKDAYS:
+        while not self._is_announcement_day(announcement):
             announcement -= timedelta(days=1)
 
-        weekday = announcement.weekday()
-        if weekday == 6:  # Sunday: Thursday 14:00 through Friday 14:00.
-            start_days, end_days = 3, 2
-        elif weekday == 0:  # Monday: Friday 14:00 through Monday 14:00.
-            start_days, end_days = 3, 0
-        else:  # Tuesday-Thursday: previous weekday 14:00 through today 14:00.
-            start_days, end_days = 1, 0
-        submitted_since = (announcement - timedelta(days=start_days)).replace(
-            hour=14, minute=0, second=0, microsecond=0
-        )
-        submitted_before = (announcement - timedelta(days=end_days)).replace(
-            hour=14, minute=0, second=0, microsecond=0
-        )
+        previous_announcement = announcement - timedelta(days=1)
+        while not self._is_announcement_day(previous_announcement):
+            previous_announcement -= timedelta(days=1)
+        submitted_since = self._submission_deadline(previous_announcement)
+        submitted_before = self._submission_deadline(announcement)
         return (
             submitted_since.astimezone(timezone.utc),
             submitted_before.astimezone(timezone.utc),
@@ -161,25 +174,32 @@ class ArxivCollector:
                 current = current.replace(tzinfo=timezone.utc)
             current = current.astimezone(timezone.utc)
             local_day_start, local_day_end = self.daily_window(current)
+            # Resolve the whole local day's schedule first. An explicitly
+            # deferred mailing is a valid empty day, while a scheduled mailing
+            # that has not happened yet must remain retryable.
             published_since, published_before, announced_at = (
-                self.announcement_window(current)
+                self.announcement_window(
+                    local_day_end - timedelta(microseconds=1)
+                )
             )
             if not local_day_start <= announced_at < local_day_end:
-                current_local = current.astimezone(ZoneInfo(self.timezone_name))
-                if current_local.weekday() < 5:
-                    source_url = ARXIV_API
-                    raise RuntimeError(
-                        "today's arXiv announcement is not available yet"
-                    )
                 return CollectionResult(
                     source_id="arxiv",
                     items=[],
                     elapsed_ms=int((time.monotonic() - started) * 1000),
                     source_name="arXiv",
-                    source_url="https://arxiv.org/",
-                    final_url="https://arxiv.org/",
-                    http_status=200,
+                    source_url=ARXIV_CALENDAR_URL,
+                    final_url=ARXIV_CALENDAR_URL,
                     domain_match=True,
+                    details={
+                        "announcement_status": "not_scheduled",
+                        "announcement_calendar_url": ARXIV_CALENDAR_URL,
+                    },
+                )
+            if current < announced_at:
+                source_url = ARXIV_API
+                raise RuntimeError(
+                    "today's arXiv announcement is not available yet"
                 )
             source_url = self.build_url(
                 start=0,

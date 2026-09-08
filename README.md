@@ -191,6 +191,8 @@ python -m unittest discover -s tests -v
 
 “今日论文”按公告批次转换后的 `Asia/Shanghai` 日期判断，而不是错误地要求作者首次提交时间也落在北京时间当天。页面同时保留并展示官方首次提交时间；`updated` 与版本号用于区分后续版本，旧论文更新不会进入当日候选。SQLite 中已有的旧结果仍可出现在“近 4 日”或“历史”视图；如果今天没有通过三重门槛的论文，页面明确显示 0 条。
 
+arXiv 官方确认的停发日期通过 `papers.deferred_announcement_dates` 配置，日期使用美东时间。已加入 [2026 年 9 月 7 日停发公告](https://arxiv-org.atlassian.net/servicedesk/customer/portal/1/group/1/create/1)：北京时间 9 月 8 日正常发布新闻，论文记录为 `announcement_status=not_scheduled`；9 月 9 日的论文查询从美东 9 月 4 日 14:00 开始，覆盖节日期间积压的投稿。后续停发日期应依据官方公告维护；正常公告日查询为空时仍报错并等待重试。
+
 默认 50 万 Token / 1 美元预算用于降低高论文量日的 Token 上限失败概率。若当天分类论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 继续调整上限，页面会按阶段记录实际用量。
 
 ### “真实性”的技术边界

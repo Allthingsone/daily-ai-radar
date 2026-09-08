@@ -219,6 +219,7 @@ class RadarPipeline:
             sources_failed=1 if result.error else 0,
             errors=errors,
             details={
+                **result.details,
                 "daily_query_items": len(result.items),
                 "verified_new_submissions": len(verified),
                 "triage_candidates": sum(

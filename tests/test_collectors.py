@@ -298,6 +298,79 @@ class CollectorParserTests(unittest.TestCase):
         self.assertEqual(result.items, [])
         fetch.assert_not_called()
 
+    def test_confirmed_deferred_mailing_is_a_valid_empty_shanghai_day(self):
+        papers = PaperSettings(deferred_announcement_dates=["2026-09-07"])
+        for fixed in (
+            datetime(2026, 9, 7, 23, 30, tzinfo=timezone.utc),
+            datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc),
+        ):
+            with self.subTest(now=fixed):
+                collector = ArxivCollector(papers, NetworkSettings())
+                with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
+                    result = collector.collect(now=fixed)
+                self.assertEqual(result.error, "")
+                self.assertEqual(result.items, [])
+                self.assertEqual(
+                    result.details["announcement_status"], "not_scheduled"
+                )
+                self.assertEqual(result.http_status, 0)
+                fetch.assert_not_called()
+
+    def test_resumed_mailing_includes_all_deferred_submission_days(self):
+        # The official Labor Day notice merges Friday 14:00 through Tuesday
+        # 14:00 Eastern into Tuesday's 20:00 mailing (Wednesday in Shanghai).
+        fixed = datetime(2026, 9, 9, 2, 0, tzinfo=timezone.utc)
+        papers = PaperSettings(deferred_announcement_dates=["2026-09-07"])
+        collector = ArxivCollector(papers, NetworkSettings())
+        submissions = (
+            "2026-09-04T19:00:00Z",
+            "2026-09-07T15:00:00Z",
+            "2026-09-08T17:59:00Z",
+        )
+        entries = "".join(
+            f"""<entry>
+              <id>http://arxiv.org/abs/2609.{index:05d}v1</id>
+              <published>{submitted}</published><updated>{submitted}</updated>
+              <title>Deferred paper {index}</title><summary>Public abstract.</summary>
+              <author><name>A. Author</name></author><category term="cs.AI"/>
+            </entry>"""
+            for index, submitted in enumerate(submissions, start=1)
+        )
+        payload = f"""<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+          <opensearch:totalResults>3</opensearch:totalResults>{entries}</feed>"""
+        response = FetchResponse(
+            payload=payload.encode("utf-8"),
+            final_url="https://export.arxiv.org/api/query",
+            status=200,
+            content_type="application/atom+xml",
+        )
+        with patch(
+            "daily_radar.collectors.arxiv.fetch_response", return_value=response
+        ) as fetch:
+            result = collector.collect(now=fixed)
+        self.assertEqual(result.error, "")
+        self.assertEqual(len(result.items), 3)
+        search = parse_qs(urlsplit(fetch.call_args.args[0]).query)["search_query"][0]
+        self.assertIn("submittedDate:[202609041800 TO 202609081759]", search)
+        self.assertEqual(
+            [item.metadata["arxiv_first_submitted_at"] for item in result.items],
+            [value.replace("Z", "+00:00") for value in submissions],
+        )
+        self.assertTrue(all(
+            item.published_at == datetime(2026, 9, 9, 0, 0, tzinfo=timezone.utc)
+            for item in result.items
+        ))
+
+    def test_resumed_mailing_still_waits_for_its_release_time(self):
+        papers = PaperSettings(deferred_announcement_dates=["2026-09-07"])
+        collector = ArxivCollector(papers, NetworkSettings())
+        before_release = datetime(2026, 9, 8, 23, 30, tzinfo=timezone.utc)
+        with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
+            result = collector.collect(now=before_release)
+        self.assertIn("not available yet", result.error)
+        fetch.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

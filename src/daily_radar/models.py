@@ -61,6 +61,7 @@ class CollectionResult:
     final_url: str = ""
     http_status: int = 0
     domain_match: bool = False
+    details: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

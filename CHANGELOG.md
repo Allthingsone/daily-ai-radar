@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Handle confirmed arXiv deferred mailing dates as valid days without new papers, so the 2026-09-07 Eastern closure does not block the September 8 Shanghai news digest.
+- Carry deferred submission windows into the next actual announcement, including September 4–8 submissions in the September 9 Shanghai batch.
+- Record the no-announcement reason in collection details while preserving failures for early or unexpectedly empty scheduled announcements.
+
 ## 0.8.2 - 2026-09-04
 
 - Replaced the three custom Alibaba FC CRON groups with one `@every 10m` interval watchdog after production evidence showed no scheduled `workflow_dispatch` events.
