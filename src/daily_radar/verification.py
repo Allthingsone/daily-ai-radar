@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request
+from zoneinfo import ZoneInfo
 
 from .collectors.base import build_http_opener
 from .config import NetworkSettings, SourceConfig
@@ -167,8 +169,39 @@ def verify_url(
 
 def arxiv_api_verification(item: RadarItem, api_url: str) -> VerificationResult:
     expected = item.external_id
-    path_id = item.canonical_url.rstrip("/").rsplit("/", 1)[-1]
-    valid = bool(expected and path_id == expected and _hostname(item.canonical_url) == "arxiv.org")
+    canonical = urlsplit(item.canonical_url)
+    path_id = canonical.path.removeprefix("/abs/")
+    source = urlsplit(api_url)
+    valid = bool(
+        expected and re.fullmatch(r"(?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?/\d{7})", expected)
+        and path_id == expected and canonical.scheme == "https"
+        and canonical.netloc == "arxiv.org" and not canonical.query and not canonical.fragment
+    )
+    method = "arxiv-api-entry"
+    reason = "arXiv API ID matches the canonical abstract URL"
+    if item.metadata.get("collection_method") == "arxiv-new-list":
+        listing = urlsplit(str(item.metadata.get("announcement_listing_url", "")))
+        expected_date = (
+            (item.published_at.astimezone(ZoneInfo("America/New_York")).date() + timedelta(days=1)).isoformat()
+            if item.published_at.tzinfo is not None else ""
+        )
+        valid = bool(
+            valid and source.scheme == "https" and source.netloc == "arxiv.org"
+            and re.fullmatch(r"/list/[A-Za-z0-9.-]+/new", source.path)
+            and listing.scheme == "https" and listing.netloc == "arxiv.org"
+            and re.fullmatch(r"/list/[A-Za-z0-9.-]+/new", listing.path)
+            and item.metadata.get("arxiv_id") == expected
+            and item.metadata.get("announcement_type") == "new"
+            and expected_date and item.metadata.get("announcement_listing_date") == expected_date
+            and item.metadata.get("announcement_batch_at") == item.published_at.isoformat()
+            and item.metadata.get("published_at_verified")
+            and item.metadata.get("is_new_submission")
+        )
+        method = "arxiv-announcement-list"
+        reason = "arXiv ID confirmed in the dated official new-submission listing"
+    else:
+        valid = bool(valid and source.scheme in {"http", "https"}
+                     and source.netloc == "export.arxiv.org" and source.path == "/api/query")
     return VerificationResult(
         status="verified-primary" if valid else "invalid-record",
         checked_at=datetime.now(timezone.utc).isoformat(),
@@ -178,8 +211,8 @@ def arxiv_api_verification(item: RadarItem, api_url: str) -> VerificationResult:
         domain="arxiv.org",
         domain_match=valid,
         source_tier=1,
-        method="arxiv-api-entry",
-        reason="arXiv API ID matches the canonical abstract URL" if valid else "arXiv ID mismatch",
+        method=method,
+        reason=reason if valid else "arXiv ID or official source mismatch",
     )
 
 

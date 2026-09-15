@@ -5,6 +5,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable, List, Optional, Tuple
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
@@ -17,7 +18,8 @@ from ..processing.normalize import (
     parse_datetime_with_status,
     unique_preserving_order,
 )
-from .base import fetch_response
+from .arxiv_listing import ArxivListingCollector
+from .base import RetryDeferred, fetch_response, retry_after_seconds
 
 
 ARXIV_API = "https://export.arxiv.org/api/query"
@@ -213,10 +215,11 @@ class ArxivCollector:
             http_status = 0
             domain_match = True
             page_number = 0
+            seen_ids = set()
 
             while total_results is None or start < total_results:
                 if page_number:
-                    self._sleep(max(0.0, self.papers.page_delay_seconds))
+                    self._sleep(max(3.0, self.papers.page_delay_seconds))
                 page_url = self.build_url(
                     start=start,
                     published_since=published_since,
@@ -230,6 +233,8 @@ class ArxivCollector:
                     retry_backoff_seconds=max(
                         3.0, self.network.retry_backoff_seconds
                     ),
+                    rate_limit_backoff_seconds=self.papers.rate_limit_backoff_seconds,
+                    sleeper=self._sleep,
                 )
                 final_url = response.final_url
                 http_status = response.status
@@ -244,12 +249,19 @@ class ArxivCollector:
                 page_items, page_total, entry_count = self.parse_page(
                     response.payload
                 )
+                if page_total is None or len(page_items) != entry_count:
+                    raise RuntimeError("arXiv API returned an incomplete result page")
                 if total_results is None:
                     total_results = page_total
                 elif page_total is not None and page_total != total_results:
                     raise RuntimeError("arXiv result count changed during pagination")
+                if start + entry_count > total_results:
+                    raise RuntimeError("arXiv API exceeded its advertised result count")
 
                 for item in page_items:
+                    if item.external_id in seen_ids:
+                        raise RuntimeError("arXiv API pagination repeated a paper")
+                    seen_ids.add(item.external_id)
                     if (
                         published_since <= item.published_at < published_before
                     ):
@@ -283,6 +295,8 @@ class ArxivCollector:
                         items.append(item)
 
                 if entry_count <= 0:
+                    if start < total_results:
+                        raise RuntimeError("arXiv API pagination ended before its advertised total")
                     break
                 next_start = start + entry_count
                 if next_start <= start:
@@ -309,15 +323,55 @@ class ArxivCollector:
                 final_url=final_url,
                 http_status=http_status,
                 domain_match=domain_match,
+                details={
+                    "collection_method": "arxiv-search-api",
+                    "announcement_status": "available",
+                    "api_pages": page_number + 1,
+                    "api_total_results": total_results,
+                },
             )
         except Exception as exc:
+            error = f"{exc.__class__.__name__}: {exc}"
+            details = {}
+            # A backup source is eligible only after a scheduled API query.
+            # Before-release, holiday, configuration and long-cooldown errors
+            # must never be converted into an apparently successful batch.
+            fallback_allowed = (
+                self.papers.listing_fallback_enabled
+                and source_url.startswith(ARXIV_API + "?")
+                and not isinstance(exc, RetryDeferred)
+                and (not isinstance(exc, HTTPError) or exc.code in {408, 429, 500, 502, 503, 504})
+            )
+            if fallback_allowed:
+                details = {"api_error": error, "api_source_url": source_url}
+                try:
+                    if isinstance(exc, HTTPError):
+                        cooldown = retry_after_seconds((exc.headers or {}).get("Retry-After", ""))
+                        if exc.code == 429:
+                            cooldown = max(cooldown, self.papers.rate_limit_backoff_seconds)
+                        if cooldown > 60:
+                            raise RetryDeferred(f"Server requested a {cooldown:.0f}-second cooldown; fallback deferred")
+                        if cooldown:
+                            self._sleep(cooldown)
+                    result = ArxivListingCollector(
+                        self.papers, self.network, self.timezone_name,
+                        fetcher=fetch_response, sleeper=self._sleep,
+                    ).collect(announced_at)
+                    result.elapsed_ms = int((time.monotonic() - started) * 1000)
+                    result.details.update(details)
+                    return result
+                except Exception as fallback_error:
+                    error += f"; official listing fallback failed: {fallback_error.__class__.__name__}: {fallback_error}"
+                    details["fallback_error"] = str(fallback_error)
             return CollectionResult(
                 source_id="arxiv",
-                error=f"{exc.__class__.__name__}: {exc}",
+                error=error,
                 elapsed_ms=int((time.monotonic() - started) * 1000),
                 source_name="arXiv",
                 source_url=source_url,
+                http_status=exc.code if isinstance(exc, HTTPError) else 0,
                 domain_match=False,
+                details=details,
             )
 
     @staticmethod

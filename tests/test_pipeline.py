@@ -66,6 +66,26 @@ class FailedArxivCollector(FakeArxivCollector):
         )
 
 
+class FakeListingArxivCollector(FakeArxivCollector):
+    def collect(self, now=None):
+        announced_at = datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)
+        source_url = "https://arxiv.org/list/cs.AI/new"
+        items = [paper("2609.12000", "Relevant"), paper("2609.12001", "Unrelated")]
+        for item in items:
+            item.published_at = announced_at
+            item.source_type = "paper-list"
+            item.metadata.update({
+                "collection_method": "arxiv-new-list", "arxiv_id": item.external_id,
+                "announcement_listing_url": source_url, "announcement_listing_date": "2026-09-14",
+                "announcement_batch_at": announced_at.isoformat(), "announcement_type": "new",
+            })
+        return CollectionResult(
+            source_id="arxiv", source_name="arXiv", source_url=source_url, final_url=source_url,
+            http_status=200, domain_match=True, items=items,
+            details={"collection_method": "arxiv-new-list", "api_error": "HTTP Error 429"},
+        )
+
+
 class FakeTwoStageScreener:
     def ensure_ready(self):
         pass
@@ -85,6 +105,26 @@ class FakeTwoStageScreener:
 
 
 class PipelinePaperTests(unittest.TestCase):
+    def test_verified_listing_fallback_reaches_the_same_two_stage_screening(self):
+        fixed = datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            settings = replace(load_settings(), database_path=database.path)
+            pipeline = RadarPipeline(settings, database)
+            pipeline.screener = FakeTwoStageScreener()
+            with patch("daily_radar.pipeline.ArxivCollector", FakeListingArxivCollector), patch(
+                "daily_radar.pipeline.datetime"
+            ) as clock:
+                clock.now.return_value = fixed
+                summary = pipeline.collect_papers()
+            self.assertEqual(summary.sources_failed, 0)
+            self.assertEqual(summary.fetched, 2)
+            self.assertEqual(summary.accepted, 1)
+            self.assertEqual(summary.details["verified_new_submissions"], 2)
+            self.assertEqual(summary.details["collection_method"], "arxiv-new-list")
+            self.assertEqual(summary.details["api_error"], "HTTP Error 429")
+            self.assertEqual(database.stats()["papers"], 2)
+
     def test_pipeline_uses_two_stage_screening_for_every_verified_daily_paper(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")

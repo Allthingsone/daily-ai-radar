@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add 30/60-second arXiv rate-limit backoff and honor `Retry-After`, deferring long cooldowns instead of sending early retries.
+- Fall back from unavailable, empty or incomplete arXiv search results to complete, date-verified official category listings; verify cross-lists against primary-category new submissions and exclude old papers and replacements.
+- Record fallback provenance and API errors, reject incomplete pagination on both collection paths, and leave unavailable submission-time/version metadata unset.
 - Handle confirmed arXiv deferred mailing dates as valid days without new papers, so the 2026-09-07 Eastern closure does not block the September 8 Shanghai news digest.
 - Carry deferred submission windows into the next actual announcement, including September 4–8 submissions in the September 9 Shanghai batch.
 - Record the no-announcement reason in collection details while preserving failures for early or unexpectedly empty scheduled announcements.

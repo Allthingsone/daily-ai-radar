@@ -256,6 +256,26 @@ class CollectorParserTests(unittest.TestCase):
         self.assertEqual(submitted_before.isoformat(), "2026-01-02T19:00:00+00:00")
         self.assertEqual(announced_at.isoformat(), "2026-01-05T01:00:00+00:00")
 
+    def test_incomplete_or_inconsistent_api_pagination_never_returns_partial_items(self):
+        fixed = datetime(2026, 8, 4, 2, 0, tzinfo=timezone.utc)
+        first_page = ARXIV.replace(b"  <entry>", b"  <totalResults>2</totalResults><entry>")
+        for second_page in (
+            b"<feed><totalResults>2</totalResults></feed>",
+            first_page,
+            first_page.replace(b"<totalResults>2", b"<totalResults>3"),
+            first_page.replace(b"<published>2026-08-03T01:00:00Z", b"<published>invalid-date"),
+        ):
+            pages = iter([first_page, second_page])
+            collector = ArxivCollector(PaperSettings(listing_fallback_enabled=False),
+                                       NetworkSettings(), sleeper=lambda _: None)
+            with self.subTest(second_page=second_page[:80]), patch(
+                "daily_radar.collectors.arxiv.fetch_response",
+                side_effect=lambda url, **kwargs: FetchResponse(next(pages), url, 200, "application/atom+xml"),
+            ):
+                result = collector.collect(fixed)
+            self.assertTrue(result.error)
+            self.assertEqual(result.items, [])
+
     def test_weekday_before_eastern_announcement_fails_without_stale_batch(self):
         before_release = datetime(2026, 8, 30, 23, 30, tzinfo=timezone.utc)
         collector = ArxivCollector(
@@ -273,7 +293,7 @@ class CollectorParserTests(unittest.TestCase):
         xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
         <opensearch:totalResults>0</opensearch:totalResults></feed>"""
         collector = ArxivCollector(
-            PaperSettings(), NetworkSettings(), clock=lambda: after_release
+            PaperSettings(listing_fallback_enabled=False), NetworkSettings(), clock=lambda: after_release
         )
         response = FetchResponse(
             payload=empty,

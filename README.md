@@ -174,6 +174,10 @@ python -m unittest discover -s tests -v
 
 程序先根据 arXiv 美东时间 20:00 的[官方公告计划](https://info.arxiv.org/help/availability.html)计算当天公告对应的提交区间，再构造 `submittedDate` 查询；只限制配置中的高相关分类，不加入任何 MLLM/VLA/驾驶关键词。随后使用 `start` 与 `max_results` 分页读取 `totalResults` 指定的全部结果，页间默认等待 3 秒。分页规则、GMT 日期格式与版本字段来自 [arXiv API User's Manual](https://info.arxiv.org/help/api/user-manual.html)。
 
+搜索 API 遇到 HTTP 429 时默认按 30 / 60 秒退避，并遵守服务端 `Retry-After`；超过单次等待上限的冷却要求会保留失败，交给后续定时任务重试。API 持续限流、超时、返回空结果或分页不完整时，默认启用 `papers.listing_fallback_enabled`，改读同一官方站点的分类新论文列表（如 [cs.AI/new](https://arxiv.org/list/cs.AI/new)）。备用采集同样串行、请求间隔至少 3 秒，不使用第三方镜像。
+
+备用列表必须与当天预期公告日期一致，并完整读取所有配置分类和每一页。仅接受官方 `New submissions` 条目；交叉收录还需在其主分类的当日新投稿列表中确认 ID，排除旧论文新交叉收录和修订。日期不匹配、条目缺失或任一必要分类不可用时，整个论文阶段仍失败，不发布漏采日报。运行详情会记录采集方式、原 API 错误及核验过的列表 URL。
+
 每篇通过 arXiv 身份验证的新论文都会经历两个阶段：
 
 1. V4-Pro 非思考高召回初筛：输入标题、分类和摘要前 480 字；无法明确排除时继续复筛。
@@ -187,11 +191,11 @@ python -m unittest discover -s tests -v
 
 严格复筛返回两个方向的语义相关性、方法新颖性、证据质量、可复现性和总体重要性。程序只验证结构并按模型给出的总体重要性排序，不再用固定加权公式决定入选。
 
-每篇论文还必须满足：arXiv API 返回的 ID 与 `arxiv.org/abs/{id}` 官方摘要页一致。页面直接显示 arXiv ID、摘要页、PDF 和可用的 DOI/代码链接。
+每篇论文还必须满足：arXiv API 或已核验日期的官方新投稿列表返回的 ID 与 `arxiv.org/abs/{id}` 官方摘要页一致。页面直接显示 arXiv ID、摘要页、PDF 和可用的 DOI/代码链接。
 
-“今日论文”按公告批次转换后的 `Asia/Shanghai` 日期判断，而不是错误地要求作者首次提交时间也落在北京时间当天。页面同时保留并展示官方首次提交时间；`updated` 与版本号用于区分后续版本，旧论文更新不会进入当日候选。SQLite 中已有的旧结果仍可出现在“近 4 日”或“历史”视图；如果今天没有通过三重门槛的论文，页面明确显示 0 条。
+“今日论文”按公告批次转换后的 `Asia/Shanghai` 日期判断，而不是错误地要求作者首次提交时间也落在北京时间当天。API 路径同时保留官方首次提交时间、`updated` 与版本号；备用列表未提供的首次提交时刻和版本字段留空，不推测或伪造。两条路径都排除旧论文更新。SQLite 中已有的旧结果仍可出现在“近 4 日”或“历史”视图；如果今天没有通过三重门槛的论文，页面明确显示 0 条。
 
-arXiv 官方确认的停发日期通过 `papers.deferred_announcement_dates` 配置，日期使用美东时间。已加入 [2026 年 9 月 7 日停发公告](https://arxiv-org.atlassian.net/servicedesk/customer/portal/1/group/1/create/1)：北京时间 9 月 8 日正常发布新闻，论文记录为 `announcement_status=not_scheduled`；9 月 9 日的论文查询从美东 9 月 4 日 14:00 开始，覆盖节日期间积压的投稿。后续停发日期应依据官方公告维护；正常公告日查询为空时仍报错并等待重试。
+arXiv 官方确认的停发日期通过 `papers.deferred_announcement_dates` 配置，日期使用美东时间。已加入 [2026 年 9 月 7 日停发公告](https://arxiv-org.atlassian.net/servicedesk/customer/portal/1/group/1/create/1)：北京时间 9 月 8 日正常发布新闻，论文记录为 `announcement_status=not_scheduled`；9 月 9 日的论文查询从美东 9 月 4 日 14:00 开始，覆盖节日期间积压的投稿。后续停发日期应依据官方公告维护；正常公告日 API 为空且备用列表无法完整核验时，仍报错并等待重试。
 
 默认 50 万 Token / 1 美元预算用于降低高论文量日的 Token 上限失败概率。若当天分类论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 继续调整上限，页面会按阶段记录实际用量。
 
@@ -264,7 +268,7 @@ PYTHONPYCACHEPREFIX=/tmp/daily-radar-pycache \
 
 ## 数据与合规
 
-- arXiv 元数据只通过其公开 API 获取，并校验 ID 与官方摘要页；定时部署前请在 `user_agent` 中换成真实联系邮箱。
+- arXiv 元数据只通过其公开 API 或官方当日新投稿列表获取，并校验 ID 与官方摘要页；定时部署前请在 `user_agent` 中换成真实联系邮箱。
 - 项目默认保存论文摘要页和 PDF 链接，不重新托管论文 PDF。
 - RSS 正文仅保存 Feed 已公开提供的摘要；社区采集只读取公开榜单、原帖元数据和互动计数，不绕过登录、付费墙或访问控制。
 - API Key 不写入数据库、导出文件或日志。

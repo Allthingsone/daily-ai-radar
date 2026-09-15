@@ -17,6 +17,9 @@ papers:
   lookback_hours: 96
   page_size: 200
   page_delay_seconds: 3.0
+  # 429 按 30/60 秒退避；搜索接口不可用时核验官方当日新论文列表。
+  rate_limit_backoff_seconds: 30.0
+  listing_fallback_enabled: true
   max_important: 20
   # 官方确认停发的美东公告日期；不把所有美国节假日都当成停发日。
   # https://info.arxiv.org/help/availability.html#2026-holidays
