@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Route arXiv API HTTP 406 responses to the date-verified official listing fallback without retrying the rejected query; preserve authentication and long-cooldown safeguards.
+- Cover API rejection followed by listing rate limits, recovery after `Retry-After`, and failure without partial publication when the fallback remains unavailable.
 - Add 30/60-second arXiv rate-limit backoff and honor `Retry-After`, deferring long cooldowns instead of sending early retries.
 - Fall back from unavailable, empty or incomplete arXiv search results to complete, date-verified official category listings; verify cross-lists against primary-category new submissions and exclude old papers and replacements.
 - Record fallback provenance and API errors, reject incomplete pagination on both collection paths, and leave unavailable submission-time/version metadata unset.

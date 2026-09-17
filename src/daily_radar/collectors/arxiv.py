@@ -336,11 +336,13 @@ class ArxivCollector:
             # A backup source is eligible only after a scheduled API query.
             # Before-release, holiday, configuration and long-cooldown errors
             # must never be converted into an apparently successful batch.
+            # The API also returns 406 in production: do not retry the same
+            # rejected query, but allow the dated official list to verify it.
             fallback_allowed = (
                 self.papers.listing_fallback_enabled
                 and source_url.startswith(ARXIV_API + "?")
                 and not isinstance(exc, RetryDeferred)
-                and (not isinstance(exc, HTTPError) or exc.code in {408, 429, 500, 502, 503, 504})
+                and (not isinstance(exc, HTTPError) or exc.code in {406, 408, 429, 500, 502, 503, 504})
             )
             if fallback_allowed:
                 details = {"api_error": error, "api_source_url": source_url}

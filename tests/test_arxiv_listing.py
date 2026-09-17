@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from email.message import Message
 from html import escape
 from io import BytesIO
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
@@ -190,13 +190,13 @@ class ArxivListingTests(unittest.TestCase):
             collector.collect(ANNOUNCEMENT.replace(tzinfo=None))
 
     def test_unavailable_or_malformed_api_uses_the_verified_listing(self):
-        for failure in ("429", "timeout", "empty", "malformed"):
+        for failure in ("406", "408", "429", "500", "502", "503", "504", "timeout", "empty", "malformed"):
             waits = []
 
             def fetch(url, **kwargs):
                 if "export.arxiv.org" in url:
-                    if failure == "429":
-                        raise HTTPError(url, 429, "Too Many Requests", Message(), BytesIO())
+                    if failure.isdigit():
+                        raise HTTPError(url, int(failure), "API unavailable", Message(), BytesIO())
                     if failure == "timeout":
                         raise TimeoutError("The read operation timed out")
                     if failure == "malformed":
@@ -213,6 +213,58 @@ class ArxivListingTests(unittest.TestCase):
             self.assertIn("api_error", result.details)
             if failure == "429":
                 self.assertEqual(waits, [30, 3])
+            elif failure.isdigit():
+                self.assertEqual(waits, [3])
+
+    def test_406_fallback_honors_both_cooldowns_and_recovers_from_listing_429(self):
+        api_headers = Message()
+        api_headers["Retry-After"] = "6"
+        listing_headers = Message()
+        listing_headers["Retry-After"] = "45"
+        listing_url = "https://arxiv.org/list/cs.AI/new?skip=0&show=2000"
+        success = MagicMock()
+        success.__enter__.return_value = success
+        success.read.return_value = listing([entry("2609.12000")])
+        success.headers = {"Content-Type": "text/html"}
+        success.geturl.return_value = listing_url
+        success.status = 200
+        opener = MagicMock()
+        opener.open.side_effect = [
+            HTTPError("https://export.arxiv.org/api/query", 406, "Not Acceptable", api_headers, BytesIO()),
+            HTTPError(listing_url, 429, "Too Many Requests", listing_headers, BytesIO()),
+            success,
+        ]
+        waits = []
+        collector = ArxivCollector(PaperSettings(categories=["cs.AI"]), NetworkSettings(), sleeper=waits.append)
+        with patch("daily_radar.collectors.base.build_http_opener", return_value=opener):
+            result = collector.collect(AFTER_RELEASE)
+        self.assertEqual(result.error, "")
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(waits, [6, 3, 45])
+        self.assertEqual(opener.open.call_count, 3)
+        requested_urls = [call.args[0].full_url for call in opener.open.call_args_list]
+        self.assertEqual(sum("export.arxiv.org" in url for url in requested_urls), 1)
+        self.assertEqual(requested_urls[1:], [listing_url, listing_url])
+        self.assertIn("HTTP Error 406", result.details["api_error"])
+        self.assertEqual(result.details["collection_method"], "arxiv-new-list")
+
+    def test_406_fallback_never_publishes_when_listing_rate_limit_persists(self):
+        opener = MagicMock()
+        opener.open.side_effect = [
+            HTTPError("https://export.arxiv.org/api/query", 406, "Not Acceptable", Message(), BytesIO()),
+            *[HTTPError("https://arxiv.org/list/cs.AI/new", 429, "Too Many Requests", Message(), BytesIO())
+              for _ in range(3)],
+        ]
+        waits = []
+        collector = ArxivCollector(PaperSettings(categories=["cs.AI"]), NetworkSettings(), sleeper=waits.append)
+        with patch("daily_radar.collectors.base.build_http_opener", return_value=opener):
+            result = collector.collect(AFTER_RELEASE)
+        self.assertEqual(result.items, [])
+        self.assertIn("HTTP Error 406", result.error)
+        self.assertIn("HTTP Error 429", result.error)
+        self.assertIn("HTTP Error 429", result.details["fallback_error"])
+        self.assertEqual(waits, [3, 30, 60])
+        self.assertEqual(opener.open.call_count, 4)
 
     def test_failed_backup_preserves_both_errors_without_partial_items(self):
         calls = []
@@ -238,7 +290,7 @@ class ArxivListingTests(unittest.TestCase):
         self.assertIn("official listing fallback failed", result.error)
 
     def test_long_api_cooldown_or_forbidden_does_not_try_another_endpoint(self):
-        for code, cooldown in ((429, "900"), (403, "")):
+        for code, cooldown in ((406, "900"), (429, "900"), (400, ""), (401, ""), (403, "")):
             headers = Message()
             headers["Retry-After"] = cooldown
             collector = ArxivCollector(PaperSettings(categories=["cs.AI"]), NetworkSettings(), sleeper=lambda _: None)

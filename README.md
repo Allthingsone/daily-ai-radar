@@ -174,7 +174,7 @@ python -m unittest discover -s tests -v
 
 程序先根据 arXiv 美东时间 20:00 的[官方公告计划](https://info.arxiv.org/help/availability.html)计算当天公告对应的提交区间，再构造 `submittedDate` 查询；只限制配置中的高相关分类，不加入任何 MLLM/VLA/驾驶关键词。随后使用 `start` 与 `max_results` 分页读取 `totalResults` 指定的全部结果，页间默认等待 3 秒。分页规则、GMT 日期格式与版本字段来自 [arXiv API User's Manual](https://info.arxiv.org/help/api/user-manual.html)。
 
-搜索 API 遇到 HTTP 429 时默认按 30 / 60 秒退避，并遵守服务端 `Retry-After`；超过单次等待上限的冷却要求会保留失败，交给后续定时任务重试。API 持续限流、超时、返回空结果或分页不完整时，默认启用 `papers.listing_fallback_enabled`，改读同一官方站点的分类新论文列表（如 [cs.AI/new](https://arxiv.org/list/cs.AI/new)）。备用采集同样串行、请求间隔至少 3 秒，不使用第三方镜像。
+搜索 API 遇到 HTTP 429 时默认按 30 / 60 秒退避，并遵守服务端 `Retry-After`；超过单次等待上限的冷却要求会保留失败，交给后续定时任务重试。API 返回 HTTP 406、持续限流、超时、返回空结果或分页不完整时，默认启用 `papers.listing_fallback_enabled`，改读同一官方站点的分类新论文列表（如 [cs.AI/new](https://arxiv.org/list/cs.AI/new)）。406 不会反复重试同一已被拒绝的查询；401/403 及要求长时间冷却的响应仍停止采集。备用采集同样串行、请求间隔至少 3 秒，遇到 429 也遵守退避和 `Retry-After`，不使用第三方镜像。
 
 备用列表必须与当天预期公告日期一致，并完整读取所有配置分类和每一页。仅接受官方 `New submissions` 条目；交叉收录还需在其主分类的当日新投稿列表中确认 ID，排除旧论文新交叉收录和修订。日期不匹配、条目缺失或任一必要分类不可用时，整个论文阶段仍失败，不发布漏采日报。运行详情会记录采集方式、原 API 错误及核验过的列表 URL。
 
