@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add an opt-in budget override for a single forced manual rerun (700k Token / USD 1.50 including prior daily usage), without changing scheduled-run defaults.
 - Extend both paper-screening stages to driving and indoor vision-language navigation (VLN), including non-large-model methods and task-specific datasets/benchmarks, while preserving the original multimodal autonomous-driving route and unchanged news policy.
 - Validate independent VLN/indoor flags and relevance dimensions, add a VLN category, and update Pages, dashboard, email and export scope labels.
 - Advance the prompt version to `2026-09-17-v4` and require same-version successful collection state before same-day publication reuse, so old driving-only decisions cannot bypass the expanded screening.

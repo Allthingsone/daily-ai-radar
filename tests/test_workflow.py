@@ -64,6 +64,39 @@ class WorkflowScheduleTests(unittest.TestCase):
         self.assertIn("daily-radar collect --kind all", publish_step["run"])
         self.assertIn("phase == 'publish'", jobs["deploy"]["if"])
 
+    def test_extra_budget_is_opt_in_and_scoped_to_one_forced_manual_run(self):
+        path = ROOT / ".github" / "workflows" / "pages.yml"
+        workflow = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        budget_input = workflow["on"]["workflow_dispatch"]["inputs"]["rerun_budget"]
+        self.assertEqual(budget_input["type"], "boolean")
+        self.assertEqual(budget_input["default"], "false")
+        steps = workflow["jobs"]["build"]["steps"]
+        budget_step = next(
+            step for step in steps
+            if step.get("name") == "Apply approved one-run budget override"
+        )
+        for guard in (
+            "steps.daily-guard.outputs.should_run == 'true'",
+            "github.event_name == 'workflow_dispatch'",
+            "inputs.force && inputs.rerun_budget",
+        ):
+            self.assertIn(guard, budget_step["if"])
+        self.assertIn("DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT=700000", budget_step["run"])
+        self.assertIn("DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD=1.50", budget_step["run"])
+        self.assertIn('>> "$GITHUB_ENV"', budget_step["run"])
+        names = [step["name"] for step in steps]
+        self.assertLess(names.index("Run offline tests"), names.index(budget_step["name"]))
+        self.assertLess(
+            names.index("Restore today's published DeepSeek usage"),
+            names.index(budget_step["name"]),
+        )
+        self.assertLess(
+            names.index(budget_step["name"]), names.index("Collect papers and finalize digest")
+        )
+        defaults = yaml.safe_load((ROOT / "config" / "settings.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(defaults["llm"]["daily_token_limit"], 500000)
+        self.assertEqual(defaults["llm"]["daily_cost_limit_usd"], 1.0)
+
     def test_aliyun_watchdog_uses_a_simple_interval_and_auto_phase(self):
         config_path = ROOT / "aliyun-fc" / "deployment-config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))

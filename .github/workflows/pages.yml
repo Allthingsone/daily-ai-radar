@@ -17,6 +17,11 @@ on:
         required: false
         default: false
         type: boolean
+      rerun_budget:
+        description: Allow this forced run a 700k Token / USD 1.50 daily ceiling
+        required: false
+        default: false
+        type: boolean
   schedule:
     # arXiv announces at 20:00 US Eastern: 08:00 Shanghai in daylight-saving
     # time and 09:00 in standard time. These are native GitHub fallbacks;
@@ -154,6 +159,16 @@ jobs:
         run: >-
           daily-radar restore-usage
           --url "${{ steps.pages.outputs.base_url }}/data/latest.json"
+
+      - name: Apply approved one-run budget override
+        if: >-
+          steps.daily-guard.outputs.should_run == 'true' &&
+          github.event_name == 'workflow_dispatch' &&
+          inputs.force && inputs.rerun_budget
+        run: |
+          echo "DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT=700000" >> "$GITHUB_ENV"
+          echo "DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD=1.50" >> "$GITHUB_ENV"
+          echo "Manual rerun only: daily ceiling is 700k Token / USD 1.50; prior usage remains counted."
 
       - name: Pre-screen verified news
         if: >-
