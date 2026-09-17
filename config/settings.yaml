@@ -69,7 +69,7 @@ llm:
   max_retries: 1
   daily_token_limit: 500000
   daily_cost_limit_usd: 1.00
-  prompt_version: 2026-08-31-v3
+  prompt_version: 2026-09-17-v4
   system_prompt_path: prompts/system.md
   news_prompt_path: prompts/news_screening.md
   paper_triage_prompt_path: prompts/paper_triage.md

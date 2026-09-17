@@ -23,6 +23,8 @@ COMPONENT_MAX = {
     "evidence_quality": 100,
     "mllm_vla_relevance": 100,
     "driving_relevance": 100,
+    "vln_relevance": 100,
+    "indoor_navigation_relevance": 100,
     "method_novelty": 100,
     "relevance": 25,
     "impact": 100,
@@ -45,6 +47,8 @@ COMPONENT_LABELS = {
     "evidence_quality": "证据质量",
     "mllm_vla_relevance": "MLLM/VLA 相关性",
     "driving_relevance": "自动驾驶相关性",
+    "vln_relevance": "VLN 相关性",
+    "indoor_navigation_relevance": "室内导航相关性",
     "method_novelty": "方法新颖性",
     "relevance": "AI 相关性",
     "impact": "影响力",
@@ -114,7 +118,7 @@ def create_app(config_path: str = "") -> FastAPI:
 
     app = FastAPI(
         title="Daily AI Radar",
-        description="AI news and MLLM/VLA-for-autonomous-driving paper radar",
+        description="AI news, multimodal autonomous driving, and driving/indoor VLN paper radar",
         version=__version__,
     )
     app.mount(

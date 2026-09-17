@@ -113,7 +113,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
-    <meta name="description" content="每日重大 AI 基座模型、自动驾驶数据集、重要热议成果与社区讨论，以及 MLLM/VLA 自动驾驶论文雷达。">
+    <meta name="description" content="每日重大 AI 基座模型、自动驾驶数据集、重要热议成果与社区讨论，以及自动驾驶多模态和 VLN（自动驾驶/室内导航）论文雷达。">
     {% if site_url %}<link rel="canonical" href="{{ site_url }}">{% endif %}
     <link rel="alternate" type="application/rss+xml" title="Daily AI Radar RSS" href="./feed.xml">
     <title>Daily AI Radar · 每日 AI 情报</title>
@@ -143,7 +143,7 @@
             <p class="eyebrow">INTELLIGENCE, NOT NOISE</p>
             <h1>追踪重大 AI 发布与社区热议，<em>以及当天的驾驶智能论文。</em></h1>
             <p class="hero-description">
-              模型只收重大基座大模型/多模态模型，数据集与 Benchmark 只收自动驾驶，科研成果须同时重要且有可验证热度；另收录高价值社区讨论。论文必须同时属于 MLLM/VLA 与自动驾驶。
+              新闻中，模型只收重大基座大模型/多模态模型，数据集与 Benchmark 只收自动驾驶，科研成果须同时重要且有可验证热度；另收录高价值社区讨论。论文覆盖自动驾驶多模态，以及自动驾驶和室内场景的 VLN 视觉语言导航。
             </p>
           </div>
           <aside class="snapshot-card">
@@ -181,7 +181,7 @@
             </button>
             <button type="button" data-kind-button="paper" role="tab" aria-selected="false">
               <span class="tab-index">P</span>
-              <span><b>MLLM / VLA 驾驶论文</b><small>Research radar</small></span>
+              <span><b>自动驾驶 / VLN 论文</b><small>Research radar</small></span>
               <em>{{ papers|length }}</em>
             </button>
           </div>
@@ -222,7 +222,7 @@
 
           <section class="content-panel" data-kind-panel="paper" data-local-date="{{ paper_today_window.local_date }}" hidden>
             <header class="section-heading">
-              <div><span>02</span><h2>MLLM / VLA × 自动驾驶论文</h2></div>
+              <div><span>02</span><h2>自动驾驶多模态与 VLN 论文</h2></div>
               <p><b data-result-count>{{ stats.papers_today }}</b> 条结果 · <i data-period-label>{{ paper_today_window.label }}</i></p>
             </header>
             <div class="item-list">

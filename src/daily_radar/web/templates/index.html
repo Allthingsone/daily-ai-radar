@@ -13,7 +13,7 @@
     <p class="eyebrow">INTELLIGENCE, NOT NOISE</p>
     <h1>每天真正面世的 AI 新模型与新成果，<br><em>以及严格相关的驾驶论文。</em></h1>
     <p class="hero-description">
-      模型只收重大基座大模型/多模态模型，数据集与 Benchmark 只收自动驾驶，科研成果须同时重要且有可验证热度；另收录高价值社区讨论。论文必须同时属于 MLLM/VLA 与自动驾驶。
+      新闻中，模型只收重大基座大模型/多模态模型，数据集与 Benchmark 只收自动驾驶，科研成果须同时重要且有可验证热度；另收录高价值社区讨论。论文覆盖自动驾驶多模态，以及自动驾驶和室内场景的 VLN 视觉语言导航。
       每个结果都保留原始链接、身份验证方式、分项得分和入选证据。
     </p>
   </div>
@@ -41,7 +41,7 @@
     </a>
     <a href="/?kind=paper&view={{ view }}&period=today" class="{{ 'active' if kind == 'paper' else '' }}">
       <span class="tab-icon">P</span>
-      <span><strong>MLLM / VLA 自动驾驶论文</strong><small>Research radar</small></span>
+      <span><strong>自动驾驶 / VLN 论文</strong><small>Research radar</small></span>
     </a>
   </nav>
 
@@ -80,7 +80,7 @@
   <section class="feed-header">
     <div>
       <span class="section-index">01</span>
-      <h2>{{ period_label }} · {{ 'AI 重大发布与热议' if kind == 'news' else 'MLLM / VLA4AD 论文' }}</h2>
+      <h2>{{ period_label }} · {{ 'AI 重大发布与热议' if kind == 'news' else '自动驾驶多模态与 VLN 论文' }}</h2>
     </div>
     <p>{{ items|length }} 条结果</p>
   </section>

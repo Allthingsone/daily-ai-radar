@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from daily_radar.config import load_settings, load_sources
+from daily_radar.config import LLMSettings, load_settings, load_sources
 
 
 class ConfigTests(unittest.TestCase):
@@ -28,6 +28,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.papers.page_delay_seconds, 3.0)
         self.assertTrue(settings.llm.news_prompt_path.is_file())
         self.assertTrue(settings.llm.paper_triage_prompt_path.is_file())
+        self.assertEqual(settings.llm.prompt_version, "2026-09-17-v4")
+        self.assertEqual(settings.llm.prompt_version, LLMSettings().prompt_version)
 
     def test_ranked_community_sources_use_dedicated_adapters(self):
         settings = load_settings()

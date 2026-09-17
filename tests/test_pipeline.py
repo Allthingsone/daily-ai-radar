@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from daily_radar.config import load_settings
+from daily_radar.config import LLMSettings, load_settings
 from daily_radar.db import Database
 from daily_radar.eligibility import LLM_SCREENING_RULE_VERSION
 from daily_radar.models import CollectionResult, RadarItem, RunSummary
@@ -98,7 +98,7 @@ class FakeTwoStageScreener:
             item.metadata["llm_screening"] = {
                 "selected": candidate,
                 "rule_version": LLM_SCREENING_RULE_VERSION,
-                "prompt_version": "2026-08-31-v3",
+                "prompt_version": LLMSettings().prompt_version,
             }
             item.score = 90 if candidate else 0
         return values
@@ -140,6 +140,7 @@ class PipelinePaperTests(unittest.TestCase):
             self.assertEqual(summary.details["verified_new_submissions"], 2)
             self.assertEqual(summary.details["triage_candidates"], 1)
             self.assertEqual(summary.details["triage_rejected"], 1)
+            self.assertEqual(summary.details["prompt_version"], settings.llm.prompt_version)
             self.assertEqual(database.stats()["papers"], 2)
 
     def test_all_pipeline_stops_before_news_tokens_when_arxiv_is_too_early(self):
@@ -166,7 +167,8 @@ class PipelinePaperTests(unittest.TestCase):
             pipeline = RadarPipeline(settings, database)
             now = datetime.now(timezone.utc)
             database.record_run(
-                RunSummary("news", now, now, 25, 4, 4, 5, 0)
+                RunSummary("news", now, now, 25, 4, 4, 5, 0,
+                           details={"prompt_version": settings.llm.prompt_version})
             )
             paper_summary = RunSummary("paper", now, now, 100, 2, 2, 1, 0)
 
@@ -188,10 +190,12 @@ class PipelinePaperTests(unittest.TestCase):
             pipeline = RadarPipeline(settings, database)
             now = datetime.now(timezone.utc)
             database.record_run(
-                RunSummary("news", now, now, 25, 4, 4, 5, 0)
+                RunSummary("news", now, now, 25, 4, 4, 5, 0,
+                           details={"prompt_version": settings.llm.prompt_version})
             )
             database.record_run(
-                RunSummary("paper", now, now, 100, 2, 2, 1, 0)
+                RunSummary("paper", now, now, 100, 2, 2, 1, 0,
+                           details={"prompt_version": settings.llm.prompt_version})
             )
 
             with patch.object(
@@ -205,6 +209,29 @@ class PipelinePaperTests(unittest.TestCase):
             collect_papers.assert_not_called()
             collect_news.assert_not_called()
 
+    def test_publish_rescreens_old_paper_policy_instead_of_reusing_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            settings = replace(load_settings(), database_path=database.path)
+            pipeline = RadarPipeline(settings, database)
+            now = datetime.now(timezone.utc)
+            database.record_run(RunSummary(
+                "paper", now, now, 100, 2, 2, 1, 0,
+                details={"prompt_version": "2026-08-31-v3"},
+            ))
+            database.record_run(RunSummary(
+                "news", now, now, 25, 4, 4, 5, 0,
+                details={"prompt_version": settings.llm.prompt_version},
+            ))
+            summary = RunSummary("paper", now, now, 100, 5, 5, 1, 0)
+            with patch.object(
+                pipeline, "collect_papers", return_value=summary
+            ) as collect_papers, patch.object(pipeline, "collect_news") as collect_news:
+                summaries = pipeline.collect("publish")
+            self.assertEqual(summaries, [summary])
+            collect_papers.assert_called_once_with()
+            collect_news.assert_not_called()
+
     def test_publish_on_confirmed_arxiv_closure_reuses_news_and_records_success(self):
         fixed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
@@ -213,7 +240,8 @@ class PipelinePaperTests(unittest.TestCase):
             pipeline = RadarPipeline(settings, database)
             pipeline.screener = FakeTwoStageScreener()
             database.record_run(
-                RunSummary("news", fixed, fixed, 25, 4, 4, 5, 0)
+                RunSummary("news", fixed, fixed, 25, 4, 4, 5, 0,
+                           details={"prompt_version": settings.llm.prompt_version})
             )
 
             with patch("daily_radar.pipeline.datetime") as clock, patch(

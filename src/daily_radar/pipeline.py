@@ -37,6 +37,7 @@ class RadarPipeline:
             kind,
             local_start.astimezone(timezone.utc),
             local_end.astimezone(timezone.utc),
+            prompt_version=self.settings.llm.prompt_version,
         )
 
     def _news_collector(self, source: SourceConfig):
@@ -129,6 +130,7 @@ class RadarPipeline:
             sources_failed=sum(bool(result.error) for result in results),
             errors=errors,
             details={
+                "prompt_version": self.settings.llm.prompt_version,
                 "raw_items": len(raw_items),
                 "within_time_window": len(recent),
                 "clustered_candidates": len(merged),
@@ -220,6 +222,7 @@ class RadarPipeline:
             errors=errors,
             details={
                 **result.details,
+                "prompt_version": self.settings.llm.prompt_version,
                 "daily_query_items": len(result.items),
                 "verified_new_submissions": len(verified),
                 "triage_candidates": sum(
@@ -262,6 +265,8 @@ class RadarPipeline:
             # database state so the final phase only has to screen papers.
             # Successful paper state is reusable too when email or Pages
             # deployment failed after collection and a watchdog retries.
+            # A changed prompt version must re-screen instead of reusing
+            # decisions that the current feed's version filter would hide.
             started = datetime.now(timezone.utc)
             summaries: List[RunSummary] = []
             if not self._has_successful_run_today("paper", started):

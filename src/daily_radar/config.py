@@ -98,7 +98,7 @@ class LLMSettings:
     max_retries: int = 1
     daily_token_limit: int = 500_000
     daily_cost_limit_usd: float = 1.0
-    prompt_version: str = "2026-08-31-v3"
+    prompt_version: str = "2026-09-17-v4"
     system_prompt_path: Path = PROJECT_ROOT / "prompts" / "system.md"
     news_prompt_path: Path = PROJECT_ROOT / "prompts" / "news_screening.md"
     paper_triage_prompt_path: Path = PROJECT_ROOT / "prompts" / "paper_triage.md"
@@ -236,7 +236,7 @@ def load_settings(path: str = "") -> Settings:
                     str(llm_raw.get("daily_cost_limit_usd", 1.0)),
                 )
             ),
-            prompt_version=str(llm_raw.get("prompt_version", "2026-08-31-v3")),
+            prompt_version=str(llm_raw.get("prompt_version", "2026-09-17-v4")),
             system_prompt_path=_resolve_project_path(
                 str(llm_raw.get("system_prompt_path", "prompts/system.md"))
             ),

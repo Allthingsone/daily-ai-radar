@@ -14,6 +14,52 @@ from daily_radar.static_site import build_static_site
 
 
 class StaticSiteTests(unittest.TestCase):
+    def test_indoor_vln_is_visible_in_pages_and_daily_exports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = Database(root / "radar.db")
+            database.initialize()
+            settings = load_settings()
+            now = datetime(2026, 9, 17, 2, 0, tzinfo=timezone.utc)
+            paper = build_demo_items()[4]
+            paper.title = "Indoor Vision-Language Navigation with Recurrent Policies"
+            paper.summary = "An agent follows language instructions using visual observations in indoor rooms."
+            paper.category = "vision-language-navigation"
+            paper.published_at = now
+            paper.component_scores = {
+                "mllm_vla_relevance": 0, "driving_relevance": 0,
+                "vln_relevance": 100, "indoor_navigation_relevance": 100,
+            }
+            paper.metadata.update({
+                "demo": False,
+                "summary_zh": "基于视觉观测与语言指令进行室内导航。",
+                "provenance": {"status": "verified-arxiv-api"},
+                "llm_screening": {
+                    "selected": True, "rule_version": LLM_SCREENING_RULE_VERSION,
+                    "prompt_version": settings.llm.prompt_version,
+                    "flags": {
+                        "is_mllm_vla": False, "is_autonomous_driving": False,
+                        "is_vln": True, "is_indoor_navigation": True,
+                        "is_substantive_application": True,
+                    },
+                },
+            })
+            database.upsert_item(paper)
+            output = root / "site"
+            build_static_site(settings, output, database=database, now=now)
+            html = (output / "index.html").read_text(encoding="utf-8")
+            for label in (paper.title, "VLN 视觉语言导航", "VLN 相关性", "室内导航相关性"):
+                self.assertIn(label, html)
+            self.assertNotIn("论文必须同时属于 MLLM/VLA 与自动驾驶", html)
+            payload = json.loads((output / "data" / "latest.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(payload["papers_today"]), 1)
+            self.assertEqual(payload["papers_today"][0]["category"], "vision-language-navigation")
+            markdown = (output / "daily.md").read_text(encoding="utf-8")
+            self.assertIn(paper.title, markdown)
+            self.assertIn("VLN（自动驾驶/室内导航）", markdown)
+            rss = ET.parse(output / "feed.xml")
+            self.assertEqual(rss.findtext("./channel/item/title"), paper.title)
+
     def test_builds_pages_snapshot_with_strict_today_papers(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

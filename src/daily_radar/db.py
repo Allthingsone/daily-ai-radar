@@ -304,12 +304,16 @@ class Database:
         kind: str,
         started_since: datetime,
         started_before: datetime,
+        *,
+        prompt_version: str = "",
     ) -> bool:
         """Return whether a usable run of ``kind`` started in the interval.
 
         A run is reusable only when at least one source succeeded. Failed
         arXiv readiness checks are recorded with ``sources_ok = 0`` and must
         never suppress a later retry after the daily announcement is ready.
+        When a prompt version is supplied, older or unversioned runs cannot
+        suppress screening under the new policy, even on the same day.
         """
 
         if started_since.tzinfo is None or started_before.tzinfo is None:
@@ -325,9 +329,16 @@ class Database:
                   AND started_at >= ?
                   AND started_at < ?
                   AND sources_ok > 0
+                  AND (? = '' OR json_extract(details_json, '$.prompt_version') = ?)
                 LIMIT 1
                 """,
-                (kind, _iso(started_since), _iso(started_before)),
+                (
+                    kind,
+                    _iso(started_since),
+                    _iso(started_before),
+                    prompt_version,
+                    prompt_version,
+                ),
             ).fetchone()
         return row is not None
 

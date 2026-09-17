@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Extend both paper-screening stages to driving and indoor vision-language navigation (VLN), including non-large-model methods and task-specific datasets/benchmarks, while preserving the original multimodal autonomous-driving route and unchanged news policy.
+- Validate independent VLN/indoor flags and relevance dimensions, add a VLN category, and update Pages, dashboard, email and export scope labels.
+- Advance the prompt version to `2026-09-17-v4` and require same-version successful collection state before same-day publication reuse, so old driving-only decisions cannot bypass the expanded screening.
 - Route arXiv API HTTP 406 responses to the date-verified official listing fallback without retrying the rejected query; preserve authentication and long-cooldown safeguards.
 - Cover API rejection followed by listing rate limits, recovery after `Retry-After`, and failure without partial publication when the fallback remains unavailable.
 - Add 30/60-second arXiv rate-limit backoff and honor `Retry-After`, deferring long cooldowns instead of sending early retries.

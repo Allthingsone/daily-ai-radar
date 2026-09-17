@@ -145,6 +145,37 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual([item["title"] for item in stored], [newest.title])
             self.assertEqual(database.stats(published_since=cutoff)["total"], 1)
 
+    def test_successful_run_requires_the_requested_prompt_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            database.initialize()
+            start = datetime(2026, 9, 17, tzinfo=timezone.utc)
+            end = start + timedelta(days=1)
+            for details in ({}, {"prompt_version": "old-driving-only"}):
+                database.record_run(
+                    RunSummary("paper", start, start, 10, 1, 1, 1, 0, details=details)
+                )
+            self.assertTrue(database.has_successful_run("paper", start, end))
+            self.assertFalse(database.has_successful_run(
+                "paper", start, end, prompt_version="new-vln-policy"
+            ))
+            # A valid zero-selection day is also reusable, but only under
+            # the same policy. Failed runs never establish reusable state.
+            database.record_run(RunSummary(
+                "paper", start, start, 0, 0, 0, 0, 1,
+                details={"prompt_version": "new-vln-policy"},
+            ))
+            self.assertFalse(database.has_successful_run(
+                "paper", start, end, prompt_version="new-vln-policy"
+            ))
+            database.record_run(RunSummary(
+                "paper", start, start, 10, 0, 0, 1, 0,
+                details={"prompt_version": "new-vln-policy"},
+            ))
+            self.assertTrue(database.has_successful_run(
+                "paper", start, end, prompt_version="new-vln-policy"
+            ))
+
     def test_feed_eligibility_hides_items_without_current_llm_selection(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")

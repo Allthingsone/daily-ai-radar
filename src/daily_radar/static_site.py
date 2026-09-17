@@ -38,6 +38,8 @@ COMPONENT_LABELS = {
     "evidence_quality": "证据质量",
     "mllm_vla_relevance": "MLLM/VLA 相关性",
     "driving_relevance": "自动驾驶相关性",
+    "vln_relevance": "VLN 相关性",
+    "indoor_navigation_relevance": "室内导航相关性",
     "method_novelty": "方法新颖性",
     "source": "来源质量",
     "freshness": "新鲜度",

@@ -32,7 +32,7 @@
       title.textContent = `没有匹配“${state.query}”的结果`;
       copy.textContent = "尝试更短的关键词，或清除搜索条件。";
     } else if (state.kind === "paper" && state.paperPeriod === "today") {
-      title.textContent = `${panel.dataset.localDate || "今天"} 暂无符合双轴门槛的新论文`;
+      title.textContent = `${panel.dataset.localDate || "今天"} 暂无符合自动驾驶多模态或 VLN 范围的新论文`;
       copy.textContent = `系统不会用旧论文填充今日结果；可切换到${recentPeriodLabel}查看回补候选。`;
     } else if (state.view === "important") {
       title.textContent = "当前范围暂无精选结果";

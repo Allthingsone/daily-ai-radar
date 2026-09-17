@@ -98,7 +98,101 @@ def news_decision(category, **overrides):
     return value
 
 
+def paper_decision(**overrides):
+    value = {
+        "selected": True,
+        "is_mllm_vla": True,
+        "is_autonomous_driving": True,
+        "is_vln": False,
+        "is_indoor_navigation": False,
+        "is_substantive_application": True,
+        "importance_score": 85,
+        "confidence": 0.9,
+        "category": "vla-policy",
+        "summary_zh": "提出并评测面向目标应用的导航方法。",
+        "why_important": "方法与实验直接服务目标任务。",
+        "evidence": ["closed-loop autonomous driving"],
+        "tags": [],
+        "dimension_scores": {
+            "mllm_vla_relevance": 90,
+            "driving_relevance": 90,
+            "vln_relevance": 0,
+            "indoor_navigation_relevance": 0,
+            "method_novelty": 80,
+            "evidence_quality": 80,
+            "reproducibility": 60,
+        },
+    }
+    value.update(overrides)
+    return value
+
+
 class DeepSeekScreenerTests(unittest.TestCase):
+    def test_paper_scope_preserves_driving_and_adds_both_vln_scenes(self):
+        cases = [
+            ("existing driving VLA", {}, True),
+            ("classic indoor VLN", {
+                "is_mllm_vla": False, "is_autonomous_driving": False,
+                "is_vln": True, "is_indoor_navigation": True,
+                "category": "vision-language-navigation",
+            }, True),
+            ("driving VLN without large models", {
+                "is_mllm_vla": False, "is_vln": True,
+                "category": "vision-language-navigation",
+            }, True),
+            ("indoor VLN benchmark", {
+                "is_mllm_vla": False, "is_autonomous_driving": False,
+                "is_vln": True, "is_indoor_navigation": True,
+                "category": "benchmark-dataset",
+            }, True),
+            ("tabletop VLA", {"is_autonomous_driving": False}, False),
+            ("driving without multimodal models or VLN", {"is_mllm_vla": False}, False),
+            ("indoor navigation without VLN", {
+                "is_mllm_vla": False, "is_autonomous_driving": False,
+                "is_indoor_navigation": True,
+            }, False),
+            ("VLN without a supported scene", {
+                "is_mllm_vla": False, "is_autonomous_driving": False,
+                "is_vln": True,
+            }, False),
+            ("incidental indoor VLN mention", {
+                "is_mllm_vla": False, "is_autonomous_driving": False,
+                "is_vln": True, "is_indoor_navigation": True,
+                "is_substantive_application": False,
+            }, False),
+            ("model rejection remains rejected", {"selected": False}, False),
+        ]
+        for label, flags, expected in cases:
+            with self.subTest(label=label):
+                decision = DeepSeekScreener._normalize_decision(
+                    paper_decision(**flags), "paper"
+                )
+                self.assertEqual(decision["selected"], expected)
+
+    def test_vln_fields_require_json_booleans(self):
+        for field in ("is_vln", "is_indoor_navigation"):
+            for invalid in (None, "true", 1):
+                with self.subTest(field=field, invalid=invalid):
+                    raw = paper_decision()
+                    if invalid is None:
+                        raw.pop(field)
+                    else:
+                        raw[field] = invalid
+                    with self.assertRaisesRegex(LLMResponseError, field):
+                        DeepSeekScreener._normalize_decision(raw, "paper")
+
+    def test_vln_scores_are_required_and_bounded(self):
+        for field in ("vln_relevance", "indoor_navigation_relevance"):
+            for invalid in (None, -1, 101, True):
+                with self.subTest(field=field, invalid=invalid):
+                    raw = paper_decision()
+                    if invalid is None:
+                        raw["dimension_scores"].pop(field)
+                    else:
+                        raw["dimension_scores"][field] = invalid
+                    with self.assertRaises(LLMResponseError):
+                        DeepSeekScreener._normalize_decision(raw, "paper")
+
     def test_news_routes_enforce_the_user_specific_hard_gates(self):
         routine_model = DeepSeekScreener._normalize_decision(
             news_decision("model-release"), "news"
@@ -338,6 +432,8 @@ class DeepSeekScreenerTests(unittest.TestCase):
                         "selected": True,
                         "is_mllm_vla": True,
                         "is_autonomous_driving": True,
+                        "is_vln": False,
+                        "is_indoor_navigation": False,
                         "is_substantive_application": False,
                         "importance_score": 80,
                         "confidence": 0.8,
@@ -349,6 +445,8 @@ class DeepSeekScreenerTests(unittest.TestCase):
                         "dimension_scores": {
                             "mllm_vla_relevance": 80,
                             "driving_relevance": 20,
+                            "vln_relevance": 0,
+                            "indoor_navigation_relevance": 0,
                             "method_novelty": 70,
                             "evidence_quality": 60,
                             "reproducibility": 30,
@@ -396,6 +494,8 @@ class DeepSeekScreenerTests(unittest.TestCase):
                         "selected": True,
                         "is_mllm_vla": True,
                         "is_autonomous_driving": True,
+                        "is_vln": False,
+                        "is_indoor_navigation": False,
                         "is_substantive_application": True,
                         "importance_score": 88,
                         "confidence": 0.91,
@@ -409,6 +509,8 @@ class DeepSeekScreenerTests(unittest.TestCase):
                         "dimension_scores": {
                             "mllm_vla_relevance": 95,
                             "driving_relevance": 98,
+                            "vln_relevance": 0,
+                            "indoor_navigation_relevance": 0,
                             "method_novelty": 82,
                             "evidence_quality": 88,
                             "reproducibility": 65,
@@ -481,6 +583,89 @@ class DeepSeekScreenerTests(unittest.TestCase):
             }
             self.assertEqual(stages["paper_triage"]["request_items"], 2)
             self.assertEqual(stages["paper_final"]["request_items"], 1)
+
+    def test_indoor_and_driving_vln_survive_two_stages_and_feed_filter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "radar.db")
+            database.initialize()
+            settings = llm_settings()
+            calls = []
+            papers = [make_item("paper"), make_item("paper")]
+            papers[0].title = "Visual Instruction Following for Indoor Navigation"
+            papers[0].summary = (
+                "An agent follows natural-language instructions using camera observations "
+                "to navigate indoor rooms. We evaluate a recurrent navigation policy."
+            )
+            papers[1].title = "Vision-Language Navigation for Autonomous Vehicles"
+            papers[1].summary = (
+                "Autonomous vehicles follow language route instructions using camera "
+                "observations. We evaluate vision-language navigation in driving scenes."
+            )
+            final_decisions = []
+            for index, item in enumerate(papers):
+                item.url = item.canonical_url = f"https://arxiv.org/abs/2609.0000{index}"
+                final_decisions.append(paper_decision(
+                    id=f"p001-{index:03d}",
+                    is_mllm_vla=False,
+                    is_autonomous_driving=index == 1,
+                    is_vln=True,
+                    is_indoor_navigation=index == 0,
+                    category="vision-language-navigation",
+                    evidence=["navigate indoor rooms" if index == 0 else "language route instructions"],
+                    dimension_scores={
+                        "mllm_vla_relevance": 0,
+                        "driving_relevance": 100 if index == 1 else 0,
+                        "vln_relevance": 100,
+                        "indoor_navigation_relevance": 100 if index == 0 else 0,
+                        "method_novelty": 80,
+                        "evidence_quality": 80,
+                        "reproducibility": 60,
+                    },
+                ))
+            contents = [
+                {"items": [
+                    {"id": f"t001-{index:03d}", "candidate": True, "confidence": 0.9}
+                    for index in range(2)
+                ]},
+                {"items": final_decisions},
+            ]
+
+            def opener(request, timeout):
+                calls.append(json.loads(request.data.decode("utf-8")))
+                return FakeResponse({
+                    "id": f"vln-response-{len(calls)}",
+                    "model": "deepseek-v4-pro",
+                    "choices": [{
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps(contents[len(calls) - 1])},
+                    }],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+                })
+
+            screener = DeepSeekScreener(
+                settings, database, "Asia/Shanghai", opener=opener,
+                clock=lambda: datetime(2026, 9, 17, tzinfo=timezone.utc),
+            )
+            screened = screener.screen_papers_two_stage(papers)
+            self.assertEqual(len(calls), 2)
+            for call in calls:
+                prompt = call["messages"][1]["content"]
+                self.assertIn("VLN", prompt)
+                self.assertIn("室内", prompt)
+                for item in papers:
+                    self.assertIn(item.title, prompt)
+            for item in screened:
+                self.assertTrue(item.metadata["llm_screening"]["selected"])
+                self.assertFalse(item.metadata["llm_screening"]["flags"]["is_mllm_vla"])
+                self.assertEqual(item.category, "vision-language-navigation")
+                database.upsert_item(item)
+            stored = database.list_items(
+                kind="paper", eligible_only=True, verified_only=True,
+                prompt_version=settings.prompt_version,
+            )
+            self.assertEqual({item["title"] for item in stored}, {item.title for item in papers})
+            self.assertEqual(papers[0].component_scores["driving_relevance"], 0)
+            self.assertEqual(papers[0].score, 85)
 
     def test_daily_token_limit_stops_before_network_call(self):
         with tempfile.TemporaryDirectory() as directory:

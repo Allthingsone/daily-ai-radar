@@ -38,6 +38,7 @@ NEWS_CATEGORIES = {
 PAPER_CATEGORIES = {
     "vla-policy",
     "mllm-reasoning",
+    "vision-language-navigation",
     "perception-understanding",
     "world-model",
     "planning",
@@ -508,6 +509,8 @@ class DeepSeekScreener:
                         else {
                             "is_mllm_vla": True,
                             "is_autonomous_driving": True,
+                            "is_vln": False,
+                            "is_indoor_navigation": False,
                             "is_substantive_application": False,
                         }
                     ),
@@ -530,6 +533,8 @@ class DeepSeekScreener:
                         else {
                             "mllm_vla_relevance": 0,
                             "driving_relevance": 0,
+                            "vln_relevance": 0,
+                            "indoor_navigation_relevance": 0,
                             "method_novelty": 0,
                             "evidence_quality": 0,
                             "reproducibility": 0,
@@ -999,15 +1004,29 @@ class DeepSeekScreener:
                 "is_autonomous_driving": _required_bool(
                     raw.get("is_autonomous_driving"), "is_autonomous_driving"
                 ),
+                "is_vln": _required_bool(raw.get("is_vln"), "is_vln"),
+                "is_indoor_navigation": _required_bool(
+                    raw.get("is_indoor_navigation"), "is_indoor_navigation"
+                ),
                 "is_substantive_application": _required_bool(
                     raw.get("is_substantive_application"),
                     "is_substantive_application",
                 ),
             }
-            selected = selected and all(flags.values())
+            driving_route = flags["is_mllm_vla"] and flags["is_autonomous_driving"]
+            vln_route = flags["is_vln"] and (
+                flags["is_autonomous_driving"] or flags["is_indoor_navigation"]
+            )
+            selected = (
+                selected
+                and flags["is_substantive_application"]
+                and (driving_route or vln_route)
+            )
             dimension_names = (
                 "mllm_vla_relevance",
                 "driving_relevance",
+                "vln_relevance",
+                "indoor_navigation_relevance",
                 "method_novelty",
                 "evidence_quality",
                 "reproducibility",

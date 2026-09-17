@@ -73,6 +73,9 @@ class MailerTests(unittest.TestCase):
             self.assertEqual(smtp.message["To"], "radar@example.com")
             self.assertEqual(result["news"], 1)
             self.assertEqual(result["papers"], 1)
+            for content_type in ("plain", "html"):
+                body = smtp.message.get_body(preferencelist=(content_type,)).get_content()
+                self.assertIn("VLN（自动驾驶/室内导航）论文", body)
             self.assertNotIn("smtp-auth-code", smtp.message.as_string())
 
 
