@@ -17,6 +17,7 @@ from .db import Database
 from .llm import DeepSeekScreener
 from .models import CollectionResult, RadarItem, RunSummary
 from .processing.dedup import cluster_news, deduplicate_exact
+from .time_windows import digest_reference
 from .verification import arxiv_api_verification, verify_news_items
 
 
@@ -38,6 +39,7 @@ class RadarPipeline:
             local_start.astimezone(timezone.utc),
             local_end.astimezone(timezone.utc),
             prompt_version=self.settings.llm.prompt_version,
+            digest_date=local_now.date().isoformat(),
         )
 
     def _news_collector(self, source: SourceConfig):
@@ -131,6 +133,7 @@ class RadarPipeline:
             errors=errors,
             details={
                 "prompt_version": self.settings.llm.prompt_version,
+                "digest_date": local_today.isoformat(),
                 "raw_items": len(raw_items),
                 "within_time_window": len(recent),
                 "clustered_candidates": len(merged),
@@ -143,16 +146,17 @@ class RadarPipeline:
         self.database.record_source_checks(summary.run_id, results)
         return summary
 
-    def collect_papers(self) -> RunSummary:
+    def collect_papers(self, target_date: str = "") -> RunSummary:
         self.screener.ensure_ready()
         started = datetime.now(timezone.utc)
+        content_time = digest_reference(target_date, self.settings.timezone, started)
         collector = ArxivCollector(
             self.settings.papers,
             self.settings.network,
             timezone_name=self.settings.timezone,
         )
-        published_since, published_before = collector.daily_window(started)
-        result = collector.collect(now=started)
+        published_since, published_before = collector.daily_window(content_time)
+        result = collector.collect(now=content_time)
         errors = [f"arxiv: {result.error}"] if result.error else []
         today_new = [
             item
@@ -191,7 +195,7 @@ class RadarPipeline:
             item for item in screened
             if bool(item.metadata.get("llm_screening", {}).get("selected"))
         ]
-        local_today = started.astimezone(ZoneInfo(self.settings.timezone)).date()
+        local_today = content_time.astimezone(ZoneInfo(self.settings.timezone)).date()
         ranked = sorted(
             accepted,
             key=lambda item: (
@@ -223,6 +227,7 @@ class RadarPipeline:
             details={
                 **result.details,
                 "prompt_version": self.settings.llm.prompt_version,
+                "digest_date": local_today.isoformat(),
                 "daily_query_items": len(result.items),
                 "verified_new_submissions": len(verified),
                 "triage_candidates": sum(
@@ -245,7 +250,19 @@ class RadarPipeline:
         self.database.record_source_checks(summary.run_id, [result])
         return summary
 
-    def collect(self, kind: str = "all") -> List[RunSummary]:
+    def collect(self, kind: str = "all", target_date: str = "") -> List[RunSummary]:
+        if target_date:
+            reference = digest_reference(target_date, self.settings.timezone)
+            if kind not in {"paper", "publish"}:
+                raise ValueError("dated replay requires --kind paper or publish")
+            # Historical RSS cannot be reconstructed honestly from today's
+            # feeds. Require the already completed news snapshot before any
+            # paid paper calls; never replace it with today's news.
+            if kind == "publish" and not self._has_successful_run_today("news", reference):
+                raise ValueError(f"No completed news snapshot for {target_date}; restore that day's state first")
+            if self._has_successful_run_today("paper", reference):
+                return []
+            return [self.collect_papers(target_date)]
         if kind == "news":
             return [self.collect_news()]
         if kind == "paper":

@@ -14,7 +14,7 @@ from .config import Settings
 from .db import Database
 from .exporter import export_markdown, export_rss
 from .processing.scoring import news_category_label, paper_category_label
-from .time_windows import PeriodWindow, build_period_window
+from .time_windows import PeriodWindow, build_period_window, digest_end, digest_reference, news_snapshot_reference
 
 
 WEB_ROOT = Path(__file__).resolve().parent / "web"
@@ -187,6 +187,7 @@ def build_static_site(
     database: Optional[Database] = None,
     now: Optional[datetime] = None,
     site_url: str = "",
+    target_date: str = "",
 ) -> List[Path]:
     """Build a self-contained, read-only GitHub Pages snapshot.
 
@@ -196,6 +197,8 @@ def build_static_site(
     """
 
     current = _as_utc(now)
+    content_time = digest_reference(target_date, settings.timezone, current)
+    published_before = digest_end(content_time, settings.timezone)
     database = database or Database(settings.database_path)
     database.initialize()
     output_dir = Path(output_dir)
@@ -204,14 +207,15 @@ def build_static_site(
     assets_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    news_time = news_snapshot_reference(database, content_time, settings.timezone, settings.llm.prompt_version) if target_date else content_time
     news_window = build_period_window(
-        "news", "recent", settings.timezone, settings.news.lookback_hours, current
+        "news", "recent", settings.timezone, settings.news.lookback_hours, news_time
     )
     paper_today_window = build_period_window(
-        "paper", "today", settings.timezone, settings.papers.lookback_hours, current
+        "paper", "today", settings.timezone, settings.papers.lookback_hours, content_time
     )
     paper_recent_window = build_period_window(
-        "paper", "recent", settings.timezone, settings.papers.lookback_hours, current
+        "paper", "recent", settings.timezone, settings.papers.lookback_hours, content_time
     )
 
     news = database.list_items(
@@ -219,6 +223,7 @@ def build_static_site(
         limit=500,
         verified_only=True,
         published_since=news_window.published_since,
+        published_before=published_before,
         eligible_only=True,
         prompt_version=settings.llm.prompt_version,
     )
@@ -227,6 +232,7 @@ def build_static_site(
         limit=500,
         verified_only=True,
         published_since=paper_today_window.published_since,
+        published_before=published_before,
         eligible_only=True,
         prompt_version=settings.llm.prompt_version,
     )
@@ -235,6 +241,7 @@ def build_static_site(
         limit=500,
         verified_only=True,
         published_since=paper_recent_window.published_since,
+        published_before=published_before,
         eligible_only=True,
         prompt_version=settings.llm.prompt_version,
     )
@@ -269,6 +276,8 @@ def build_static_site(
     generated_display = current.astimezone(ZoneInfo(settings.timezone)).strftime(
         "%Y-%m-%d %H:%M %Z"
     )
+    if target_date:
+        generated_display = f"{target_date} 日报补跑 · 实际生成 {generated_display}"
     local_date = current.astimezone(ZoneInfo(settings.timezone)).date().isoformat()
     llm_usage = database.llm_usage_summary(local_date)
     llm_usage["stages"] = database.llm_usage_breakdown(local_date)
@@ -335,6 +344,7 @@ def build_static_site(
     payload = {
         "version": __version__,
         "generated_at": current.isoformat(),
+        "digest_date": content_time.astimezone(ZoneInfo(settings.timezone)).date().isoformat(),
         "timezone": settings.timezone,
         "site_url": site_url,
         "windows": {

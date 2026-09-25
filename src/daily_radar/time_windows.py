@@ -1,10 +1,41 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from math import ceil
 from typing import Optional
 from zoneinfo import ZoneInfo
+
+
+def digest_reference(day: str, timezone_name: str, now: Optional[datetime] = None) -> datetime:
+    """Resolve a content date without changing the actual billing clock."""
+    current = now or datetime.now(timezone.utc)
+    current = current.replace(tzinfo=timezone.utc) if current.tzinfo is None else current
+    if not day:
+        return current
+    target = date.fromisoformat(day)
+    local_timezone = ZoneInfo(timezone_name)
+    local_today = current.astimezone(local_timezone).date()
+    if target.isoformat() != day or target > local_today:
+        raise ValueError("digest date must be YYYY-MM-DD and cannot be in the future")
+    if target == local_today:
+        return current
+    return datetime.combine(target, time.max, local_timezone).astimezone(timezone.utc)
+
+
+def digest_end(reference: datetime, timezone_name: str) -> datetime:
+    local = reference.astimezone(ZoneInfo(timezone_name))
+    return (local.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).astimezone(timezone.utc)
+
+
+def news_snapshot_reference(database, reference: datetime, timezone_name: str, prompt_version: str) -> datetime:
+    """Retain the original news lookback when replaying a saved digest."""
+    local = reference.astimezone(ZoneInfo(timezone_name))
+    start = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    return database.successful_run_started_at(
+        "news", start.astimezone(timezone.utc), digest_end(reference, timezone_name),
+        prompt_version=prompt_version, digest_date=local.date().isoformat(),
+    ) or reference
 
 
 @dataclass(frozen=True)

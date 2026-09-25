@@ -22,6 +22,11 @@ on:
         required: false
         default: false
         type: boolean
+      target_date:
+        description: Past Shanghai digest date YYYY-MM-DD (requires force and publish)
+        required: false
+        default: ""
+        type: string
   schedule:
     # arXiv announces at 20:00 US Eastern: 08:00 Shanghai in daylight-saving
     # time and 09:00 in standard time. These are native GitHub fallbacks;
@@ -52,7 +57,7 @@ jobs:
     outputs:
       should_run: ${{ steps.daily-guard.outputs.should_run }}
       phase: ${{ steps.execution-phase.outputs.value }}
-      local_date: ${{ steps.usage-date.outputs.value }}
+      local_date: ${{ steps.usage-date.outputs.digest_date }}
       success_marker_exists: ${{ steps.daily-success.outputs.cache-hit }}
     steps:
       - name: Resolve execution phase
@@ -70,14 +75,34 @@ jobs:
       - name: Compute Shanghai usage date
         id: usage-date
         shell: bash
-        run: echo "value=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
+        env:
+          TARGET_DATE: ${{ inputs.target_date }}
+          FORCE_RUN: ${{ inputs.force }}
+          PHASE: ${{ steps.execution-phase.outputs.value }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from datetime import date, datetime
+          from zoneinfo import ZoneInfo
+          today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+          target = os.environ.get("TARGET_DATE", "")
+          if target:
+              parsed = date.fromisoformat(target)
+              if parsed.isoformat() != target or parsed >= today:
+                  raise SystemExit("target_date must be a past YYYY-MM-DD Shanghai date")
+              if os.environ["EVENT_NAME"] != "workflow_dispatch" or os.environ["FORCE_RUN"] != "true" or os.environ["PHASE"] != "publish":
+                  raise SystemExit("Dated replay requires a forced manual publish")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"value={today.isoformat()}\ndigest_date={target or today.isoformat()}\ntarget_date={target}\n")
+          PY
 
       - name: Restore today's successful-delivery marker
         id: daily-success
         uses: actions/cache/restore@v5
         with:
           path: .daily-success
-          key: daily-radar-success-${{ runner.os }}-${{ steps.usage-date.outputs.value }}
+          key: daily-radar-success-${{ runner.os }}-${{ steps.usage-date.outputs.digest_date }}
 
       - name: Skip backup attempts after today's first success
         id: daily-guard
@@ -148,6 +173,7 @@ jobs:
           restore-keys: |
             daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-${{ github.run_id }}-
             daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.value }}-
+            daily-radar-state-${{ runner.os }}-${{ steps.usage-date.outputs.digest_date }}-
 
       - name: Configure GitHub Pages
         if: steps.daily-guard.outputs.should_run == 'true'
@@ -159,6 +185,20 @@ jobs:
         run: >-
           daily-radar restore-usage
           --url "${{ steps.pages.outputs.base_url }}/data/latest.json"
+
+      - name: Preserve published historical archives
+        if: >-
+          steps.daily-guard.outputs.should_run == 'true' &&
+          steps.execution-phase.outputs.value == 'publish'
+        env:
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
+          TARGET_DATE: ${{ steps.usage-date.outputs.target_date }}
+        run: |
+          if [ -n "$TARGET_DATE" ]; then
+            daily-radar restore-site --url "$SITE_URL/" --output site --include-root
+          else
+            daily-radar restore-site --url "$SITE_URL/" --output site
+          fi
 
       - name: Apply approved one-run budget override
         if: >-
@@ -187,8 +227,11 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
           FORCE_RUN: ${{ inputs.force }}
+          TARGET_DATE: ${{ steps.usage-date.outputs.target_date }}
         run: |
-          if [ "$FORCE_RUN" = "true" ]; then
+          if [ -n "$TARGET_DATE" ]; then
+            daily-radar collect --kind publish --date "$TARGET_DATE"
+          elif [ "$FORCE_RUN" = "true" ]; then
             daily-radar collect --kind all
           else
             daily-radar collect --kind publish
@@ -206,15 +249,17 @@ jobs:
         if: >-
           steps.daily-guard.outputs.should_run == 'true' &&
           steps.execution-phase.outputs.value == 'publish'
-        run: >-
-          daily-radar build-site
-          --output site
-          --site-url "${{ steps.pages.outputs.base_url }}/"
+        env:
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
+          TARGET_DATE: ${{ steps.usage-date.outputs.target_date }}
+        run: daily-radar build-site --output site --site-url "$SITE_URL/" --date "$TARGET_DATE"
 
       - name: Validate publish artifact
         if: >-
           steps.daily-guard.outputs.should_run == 'true' &&
           steps.execution-phase.outputs.value == 'publish'
+        env:
+          TARGET_DATE: ${{ steps.usage-date.outputs.target_date }}
         run: |
           test -s site/index.html
           test -s site/data/latest.json
@@ -222,6 +267,11 @@ jobs:
           test -s site/feed.xml
           test -s site/assets/pages.css
           test -s site/assets/pages.js
+          if [ -n "$TARGET_DATE" ]; then
+            test -s "site/archive/$TARGET_DATE/index.html"
+            test -s "site/archive/$TARGET_DATE/data/latest.json"
+            test -s site/archive/index.json
+          fi
 
       - name: Upload GitHub Pages artifact
         if: >-
@@ -239,12 +289,14 @@ jobs:
         env:
           DAILY_RADAR_EMAIL_USERNAME: ${{ secrets.DAILY_RADAR_EMAIL_USERNAME }}
           DAILY_RADAR_EMAIL_AUTH_CODE: ${{ secrets.DAILY_RADAR_EMAIL_AUTH_CODE }}
+          TARGET_DATE: ${{ steps.usage-date.outputs.target_date }}
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
         run: |
           if [ -z "$DAILY_RADAR_EMAIL_USERNAME" ] || [ -z "$DAILY_RADAR_EMAIL_AUTH_CODE" ]; then
             echo "::error::Configure DAILY_RADAR_EMAIL_USERNAME and DAILY_RADAR_EMAIL_AUTH_CODE before enabling daily delivery."
             exit 1
           fi
-          daily-radar send-email --site-url "${{ steps.pages.outputs.base_url }}/"
+          daily-radar send-email --site-url "$SITE_URL/" --date "$TARGET_DATE"
 
   deploy:
     needs: build

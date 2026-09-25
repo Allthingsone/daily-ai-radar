@@ -122,6 +122,15 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 
 CREATE INDEX IF NOT EXISTS idx_llm_usage_local_date
 ON llm_usage(local_date, id DESC);
+
+-- Checkpoints are private working state, never public feed entries. Only
+-- completely validated decisions belong here; publication remains atomic
+-- with respect to completion of the whole screening stage.
+CREATE TABLE IF NOT EXISTS screening_cache (
+    cache_key TEXT PRIMARY KEY,
+    decision_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -143,6 +152,22 @@ def _iso(value: datetime) -> str:
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
+
+    def screening_checkpoint(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT decision_json FROM screening_cache WHERE cache_key = ?",
+                (cache_key,),
+            ).fetchone()
+        value = _loads(row["decision_json"], None) if row else None
+        return value if isinstance(value, dict) else None
+
+    def save_screening_checkpoint(self, cache_key: str, decision: Dict[str, Any]) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO screening_cache VALUES (?, ?, ?)",
+                (cache_key, _dumps(decision), datetime.now(timezone.utc).isoformat()),
+            )
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -306,8 +331,23 @@ class Database:
         started_before: datetime,
         *,
         prompt_version: str = "",
+        digest_date: str = "",
     ) -> bool:
-        """Return whether a usable run of ``kind`` started in the interval.
+        return self.successful_run_started_at(
+            kind, started_since, started_before,
+            prompt_version=prompt_version, digest_date=digest_date,
+        ) is not None
+
+    def successful_run_started_at(
+        self,
+        kind: str,
+        started_since: datetime,
+        started_before: datetime,
+        *,
+        prompt_version: str = "",
+        digest_date: str = "",
+    ) -> Optional[datetime]:
+        """Return the latest usable run's actual start time for this digest.
 
         A run is reusable only when at least one source succeeded. Failed
         arXiv readiness checks are recorded with ``sources_ok = 0`` and must
@@ -323,24 +363,31 @@ class Database:
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT 1
+                SELECT started_at
                 FROM runs
                 WHERE kind = ?
-                  AND started_at >= ?
-                  AND started_at < ?
+                  AND (
+                    (started_at >= ? AND started_at < ?
+                     AND (? = '' OR json_extract(details_json, '$.digest_date') IS NULL))
+                    OR (? != '' AND json_extract(details_json, '$.digest_date') = ?)
+                  )
                   AND sources_ok > 0
                   AND (? = '' OR json_extract(details_json, '$.prompt_version') = ?)
+                ORDER BY started_at DESC
                 LIMIT 1
                 """,
                 (
                     kind,
                     _iso(started_since),
                     _iso(started_before),
+                    digest_date,
+                    digest_date,
+                    digest_date,
                     prompt_version,
                     prompt_version,
                 ),
             ).fetchone()
-        return row is not None
+        return datetime.fromisoformat(row["started_at"]) if row else None
 
     def record_source_checks(
         self, run_id: int, results: List[CollectionResult]
@@ -544,6 +591,7 @@ class Database:
         published_since: Optional[datetime] = None,
         eligible_only: bool = False,
         prompt_version: str = "",
+        published_before: Optional[datetime] = None,
     ) -> List[Dict[str, Any]]:
         clauses: List[str] = []
         params: List[Any] = []
@@ -567,6 +615,9 @@ class Database:
         if published_since is not None:
             clauses.append("published_at >= ?")
             params.append(_iso(published_since))
+        if published_before is not None:
+            clauses.append("published_at < ?")
+            params.append(_iso(published_before))
         if eligible_only:
             clauses.append(
                 "(COALESCE(json_extract(metadata_json, '$.llm_screening.selected'), 0) = 1 "

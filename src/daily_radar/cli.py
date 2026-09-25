@@ -9,6 +9,7 @@ from typing import Iterable
 from zoneinfo import ZoneInfo
 
 from .config import Settings, load_settings
+from .archives import add_archive_links, build_archive, restore_published_site
 from .db import Database
 from .exporter import export_all
 from .llm import (
@@ -44,6 +45,7 @@ def _parser() -> argparse.ArgumentParser:
     collect.add_argument(
         "--kind", choices=("news", "paper", "all", "publish"), default="all"
     )
+    collect.add_argument("--date", default="", help="补跑的内容日期 YYYY-MM-DD；费用仍按实际调用日计入")
 
     seed = subparsers.add_parser("seed-demo", help="写入隔离的离线演示数据库")
     seed.add_argument(
@@ -71,6 +73,7 @@ def _parser() -> argparse.ArgumentParser:
         "build-site", help="生成可直接发布到 GitHub Pages 的只读静态站点"
     )
     build_site.add_argument("--output", default="site", help="站点输出目录")
+    build_site.add_argument("--date", default="", help="生成指定日期的独立归档，保留最新首页")
     build_site.add_argument(
         "--site-url", default="", help="部署后的站点根 URL，用于 RSS 频道链接"
     )
@@ -82,6 +85,11 @@ def _parser() -> argparse.ArgumentParser:
     send_email.add_argument(
         "--site-url", default="", help="邮件中的 GitHub Pages 完整链接"
     )
+    send_email.add_argument("--date", default="", help="补发指定日期的日报")
+    restore_site = subparsers.add_parser("restore-site", help="部署前保留已发布的历史归档")
+    restore_site.add_argument("--url", required=True)
+    restore_site.add_argument("--output", default="site")
+    restore_site.add_argument("--include-root", action="store_true", help="历史补跑时同时保留原首页")
     restore_usage = subparsers.add_parser(
         "restore-usage", help="从现有 Pages 快照恢复当天 DeepSeek 用量"
     )
@@ -180,13 +188,14 @@ def main(argv: Iterable[str] = None) -> int:
         return 1 if result["unverified"] or result["unknown_source"] else 0
     if args.command == "collect":
         try:
-            summaries = RadarPipeline(settings, database).collect(args.kind)
+            summaries = RadarPipeline(settings, database).collect(args.kind, target_date=args.date)
         except (
             LLMConfigurationError,
             LLMBudgetExceeded,
             LLMRequestError,
             LLMResponseError,
             LLMUsageUnavailable,
+            ValueError,
         ) as exc:
             print(f"DeepSeek screening stopped: {exc}", file=sys.stderr)
             _print_llm_usage(settings, database, stream=sys.stderr)
@@ -231,12 +240,11 @@ def main(argv: Iterable[str] = None) -> int:
         return 0
     if args.command == "build-site":
         output_dir = Path(args.output).expanduser().resolve()
-        paths = build_static_site(
-            settings,
-            output_dir,
-            database=database,
-            site_url=args.site_url,
-        )
+        if args.date:
+            paths = build_archive(settings, output_dir, database, args.site_url, args.date)
+        else:
+            paths = build_static_site(settings, output_dir, database=database, site_url=args.site_url)
+            add_archive_links(output_dir)
         print(f"GitHub Pages snapshot: {output_dir}")
         for path in paths:
             print(path)
@@ -267,14 +275,20 @@ def main(argv: Iterable[str] = None) -> int:
         database.initialize()
         try:
             result = send_daily_email(
-                settings, database, site_url=args.site_url
+                settings, database,
+                site_url=(args.site_url.rstrip("/") + f"/archive/{args.date}/" if args.date else args.site_url),
+                target_date=args.date,
             )
         except EmailConfigurationError as exc:
             print(f"Email configuration error: {exc}", file=sys.stderr)
             return 2
         print(
-            f"Email sent: news={result['news']} papers={result['papers']}"
+            f"Email sent: date={result['digest_date']} news={result['news']} papers={result['papers']} usage_date={result['usage_date']}"
         )
+        return 0
+    if args.command == "restore-site":
+        count = restore_published_site(settings, args.url, Path(args.output), args.include_root)
+        print(f"Preserved {count} published archive(s); include_root={args.include_root}")
         return 0
     if args.command == "restore-usage":
         database.initialize()

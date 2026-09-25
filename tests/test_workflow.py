@@ -97,6 +97,27 @@ class WorkflowScheduleTests(unittest.TestCase):
         self.assertEqual(defaults["llm"]["daily_token_limit"], 500000)
         self.assertEqual(defaults["llm"]["daily_cost_limit_usd"], 1.0)
 
+    def test_dated_replay_keeps_billing_cache_and_delivery_dates_separate(self):
+        path = ROOT / ".github" / "workflows" / "pages.yml"
+        workflow = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        self.assertEqual(workflow["on"]["workflow_dispatch"]["inputs"]["target_date"]["default"], "")
+        build = workflow["jobs"]["build"]
+        steps = {step["name"]: step for step in build["steps"]}
+        self.assertIn("outputs.digest_date", build["outputs"]["local_date"])
+        self.assertIn("outputs.digest_date", steps["Restore today's successful-delivery marker"]["with"]["key"])
+        cache = steps["Restore same-day radar state"]["with"]
+        self.assertIn("outputs.value", cache["key"])
+        self.assertLess(cache["restore-keys"].index("outputs.value"), cache["restore-keys"].index("outputs.digest_date"))
+        self.assertIn("outputs.value", steps["Save same-day radar state, including failed-call usage"]["with"]["key"])
+        self.assertIn('collect --kind publish --date "$TARGET_DATE"', steps["Collect papers and finalize digest"]["run"])
+        self.assertIn('--date "$TARGET_DATE"', steps["Build static site"]["run"])
+        self.assertIn('--date "$TARGET_DATE"', steps["Send daily email"]["run"])
+        self.assertIn("--include-root", steps["Preserve published historical archives"]["run"])
+        date_script = steps["Compute Shanghai usage date"]["run"].split("\n", 1)[1].rsplit("\nPY", 1)[0]
+        compile(date_script, "workflow date validation", "exec")
+        self.assertIn("parsed >= today", date_script)
+        self.assertIn('os.environ["FORCE_RUN"] != "true"', date_script)
+
     def test_aliyun_watchdog_uses_a_simple_interval_and_auto_phase(self):
         config_path = ROOT / "aliyun-fc" / "deployment-config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))

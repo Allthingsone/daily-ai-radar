@@ -110,6 +110,10 @@ flowchart LR
 
 DeepSeek 是正式 Feed 的唯一语义裁判。论文初筛只在能明确排除至少一个目标方向时拒绝，不确定项必须进入严格复筛。Key 缺失、模型配置被降级、响应字段不完整、预算耗尽或 API 调用失败时，任务会停止，不会发布只完成一部分筛选的日报，也不会静默回退到关键词评分；上一版已成功部署的 Pages 会继续保留。
 
+通过校验的每条新闻、论文初筛和复筛决定会立即保存为独立断点。单篇论文的证据摘录不符合原文时，只单独重试该篇；后续运行复用输入、模型与 Prompt 均未变化的有效决定，避免重复消耗已完成条目的 Token。断点不是公开内容，仍须全部筛选完成才发布。
+
+跨天补跑可在 Actions 手动运行中设置 `phase=publish`、`force=true`、`target_date=2026-09-25`（替换为实际日期）。补跑复用目标日新闻，并生成独立的 `archive/YYYY-MM-DD/` 页面及补发邮件，不把历史日报冒充今日更新。计费用量按实际调用日累计，默认预算不变；条件和操作见 [GitHub Pages 部署说明](docs/GITHUB_PAGES.md)。
+
 ## 配置
 
 - [`config/settings.yaml`](config/settings.yaml)：时间窗口、arXiv 分类、DeepSeek、预算、Prompt 路径和 SMTP 主机设置。

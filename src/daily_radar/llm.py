@@ -67,6 +67,10 @@ class LLMResponseError(RuntimeError):
     pass
 
 
+class LLMEvidenceRecoveryError(LLMResponseError):
+    """An isolated item exhausted retries; do not retry its successful siblings."""
+
+
 class LLMOutputTruncated(LLMResponseError):
     """The provider stopped before the final structured response was complete."""
 
@@ -342,23 +346,62 @@ class DeepSeekScreener:
         return summary
 
     def _screen_batch(
-        self, batch: Sequence[RadarItem], kind: str, batch_label: str
+        self, batch: Sequence[RadarItem], kind: str, batch_label: str,
+        validation_feedback: str = "",
     ) -> List[Dict[str, Any]]:
+        keys = [self._checkpoint_key(item, kind) for item in batch]
+        saved = [self.database.screening_checkpoint(key) for key in keys]
+        missing = [index for index, decision in enumerate(saved) if decision is None]
+        if len(missing) < len(batch):
+            print(f"[screen-{kind}] batch={batch_label} reused={len(batch) - len(missing)} pending={len(missing)}", flush=True)
+            if missing:
+                fresh = self._screen_batch([batch[index] for index in missing], kind, batch_label + "r")
+                for index, decision in zip(missing, fresh):
+                    saved[index] = decision
+            return saved
         identifiers = [
             f"{kind[0]}{batch_label}-{index:03d}"
             for index in range(len(batch))
         ]
         base_prompt = self._build_prompt(batch, identifiers, kind)
         prompt = base_prompt
+        if validation_feedback:
+            prompt += (
+                "\n\n重试修正要求：该候选的上一次响应未通过原文证据校验。"
+                + f"错误为：{validation_feedback}。请从本次提供的原文逐字摘录证据，"
+                + "并使用本次候选 ID，仅返回完整 JSON。"
+            )
         last_error: Optional[Exception] = None
         for attempt in range(self.settings.max_retries + 1):
             purpose = f"screen-{kind}-batch-{batch_label}-attempt-{attempt + 1}"
+            print(f"[screen-{kind}] batch={batch_label} items={len(batch)} attempt={attempt + 1}", flush=True)
             try:
                 content = self._invoke(prompt, purpose, len(batch), kind)
                 decisions = self._parse_decisions(content, identifiers, kind, batch)
-                self._validate_evidence(batch, decisions)
+                invalid = []
+                for index, (item, decision) in enumerate(zip(batch, decisions)):
+                    try:
+                        self._validate_evidence([item], [decision])
+                    except LLMResponseError as exc:
+                        if len(batch) == 1:
+                            raise
+                        print(f"[screen-{kind}] isolate invalid evidence: {exc}", flush=True)
+                        invalid.append((index, str(exc)))
+                    else:
+                        self.database.save_screening_checkpoint(keys[index], decision)
+                # A bad excerpt must not re-bill the other valid decisions.
+                # The isolated item still has to pass the same strict checks.
+                for index, feedback in invalid:
+                    try:
+                        decisions[index] = self._screen_batch(
+                            [batch[index]], kind, f"{batch_label}e{index}", feedback
+                        )[0]
+                    except LLMResponseError as exc:
+                        raise LLMEvidenceRecoveryError(str(exc)) from exc
                 return decisions
             except LLMBudgetExceeded:
+                raise
+            except LLMEvidenceRecoveryError:
                 raise
             except LLMOutputTruncated as exc:
                 # Retrying an identical max-effort request usually consumes the
@@ -391,6 +434,16 @@ class DeepSeekScreener:
     def _triage_paper_batch(
         self, batch: Sequence[RadarItem], batch_label: str
     ) -> List[Dict[str, Any]]:
+        keys = [self._checkpoint_key(item, "paper-triage") for item in batch]
+        saved = [self.database.screening_checkpoint(key) for key in keys]
+        missing = [index for index, decision in enumerate(saved) if decision is None]
+        if len(missing) < len(batch):
+            print(f"[paper-triage] batch={batch_label} reused={len(batch) - len(missing)} pending={len(missing)}", flush=True)
+            if missing:
+                fresh = self._triage_paper_batch([batch[index] for index in missing], batch_label + "r")
+                for index, decision in zip(missing, fresh):
+                    saved[index] = decision
+            return saved
         identifiers = [
             f"t{batch_label}-{index:03d}" for index in range(len(batch))
         ]
@@ -401,6 +454,7 @@ class DeepSeekScreener:
             purpose = (
                 f"triage-paper-batch-{batch_label}-attempt-{attempt + 1}"
             )
+            print(f"[paper-triage] batch={batch_label} items={len(batch)} attempt={attempt + 1}", flush=True)
             try:
                 content = self._invoke(
                     prompt,
@@ -410,7 +464,10 @@ class DeepSeekScreener:
                     thinking_enabled=False,
                     output_cap=self.settings.paper_triage_max_output_tokens,
                 )
-                return self._parse_triage_decisions(content, identifiers)
+                decisions = self._parse_triage_decisions(content, identifiers)
+                for key, decision in zip(keys, decisions):
+                    self.database.save_screening_checkpoint(key, decision)
+                return decisions
             except LLMBudgetExceeded:
                 raise
             except LLMOutputTruncated as exc:
@@ -453,8 +510,27 @@ class DeepSeekScreener:
             ]
             if unsupported:
                 raise LLMResponseError(
-                    "DeepSeek evidence is not an exact excerpt of the supplied text"
+                    "DeepSeek evidence is not an exact excerpt of the supplied text: "
+                    + json.dumps({"item": item.external_id or item.canonical_url,
+                                  "unsupported_excerpts": unsupported}, ensure_ascii=False)
                 )
+
+    def _checkpoint_key(self, item: RadarItem, kind: str) -> str:
+        # Canonical input with a fixed ID excludes batch order and transient
+        # fetch/verification times, but includes every field the model sees.
+        prompt = (
+            self._build_paper_triage_prompt([item], ["checkpoint"])
+            if kind == "paper-triage"
+            else self._build_prompt([item], ["checkpoint"], kind)
+        )
+        payload = {
+            "schema": "validated-decision-v1", "kind": kind,
+            "url": item.canonical_url, "model": self.settings.model,
+            "thinking": kind != "paper-triage", "reasoning_effort": self.settings.reasoning_effort,
+            "prompt_version": self.settings.prompt_version,
+            "prompt_sha256": self._prompt_sha256(kind), "prompt": prompt,
+        }
+        return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
     def _build_prompt(
         self, batch: Sequence[RadarItem], identifiers: Sequence[str], kind: str

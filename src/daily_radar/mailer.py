@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from .config import Settings
 from .db import Database
-from .time_windows import build_period_window
+from .time_windows import build_period_window, digest_end, digest_reference, news_snapshot_reference
 
 
 class EmailConfigurationError(RuntimeError):
@@ -33,12 +33,14 @@ def _selected_items(
     paper_window = build_period_window(
         "paper", "today", settings.timezone, settings.papers.lookback_hours, now
     )
+    published_before = digest_end(now, settings.timezone)
     news = database.list_items(
         kind="news",
         important_only=False,
         verified_only=True,
         eligible_only=True,
         published_since=now - timedelta(hours=24),
+        published_before=published_before,
         limit=500,
         prompt_version=settings.llm.prompt_version,
     )
@@ -48,6 +50,7 @@ def _selected_items(
         verified_only=True,
         eligible_only=True,
         published_since=paper_window.published_since,
+        published_before=published_before,
         limit=500,
         prompt_version=settings.llm.prompt_version,
     )
@@ -113,28 +116,35 @@ def build_daily_message(
     database: Database,
     site_url: str = "",
     now: Optional[datetime] = None,
+    target_date: str = "",
 ) -> Tuple[EmailMessage, Dict[str, Any]]:
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
-    local = current.astimezone(ZoneInfo(settings.timezone))
+    reference = digest_reference(target_date, settings.timezone, current)
+    local = reference.astimezone(ZoneInfo(settings.timezone))
+    usage_date = current.astimezone(ZoneInfo(settings.timezone)).date().isoformat()
     sender = _validated_address(settings.email.username, "email username")
     recipient = _validated_address(
         settings.email.recipient or settings.email.username, "email recipient"
     )
-    news, papers = _selected_items(database, settings, current)
-    usage = database.llm_usage_summary(local.date().isoformat())
+    selection_time = news_snapshot_reference(database, reference, settings.timezone, settings.llm.prompt_version) if target_date else reference
+    news, papers = _selected_items(database, settings, selection_time)
+    usage = database.llm_usage_summary(usage_date)
     subject = f"Daily AI Radar｜{local:%Y-%m-%d}｜新闻 {len(news)} · 论文 {len(papers)}"
+    if target_date:
+        subject += "｜补发"
 
     text_lines = [
         f"Daily AI Radar · {local:%Y-%m-%d}",
         "来源经过 URL/域名/arXiv 身份校验；论文先高召回初筛，最终语义筛选使用 DeepSeek V4-Pro Thinking max。",
+        f"内容日期：{local:%Y-%m-%d}；发送/用量日期：{usage_date}。",
         "",
     ]
     text_lines.extend(_text_section("AI 新发布与技术成果", news))
     text_lines.extend(_text_section("今日自动驾驶多模态与 VLN（自动驾驶/室内导航）论文", papers))
     text_lines.append(
-        f"今日 DeepSeek 用量：{usage['total_tokens']} / {settings.llm.daily_token_limit} Token，"
+        f"{usage_date} DeepSeek 用量：{usage['total_tokens']} / {settings.llm.daily_token_limit} Token，"
         f"估算 ${usage['estimated_cost_usd']:.4f} / ${settings.llm.daily_cost_limit_usd:.2f}。"
     )
     if site_url:
@@ -154,7 +164,7 @@ def build_daily_message(
         + _html_section("AI 新发布与技术成果", news)
         + _html_section("今日自动驾驶多模态与 VLN（自动驾驶/室内导航）论文", papers)
         + '<aside style="padding:14px;background:#f2f4f7;border-radius:8px;color:#475467">'
-        f'今日 DeepSeek 用量：<b>{usage["total_tokens"]}</b> / {settings.llm.daily_token_limit} Token；'
+        f'{usage_date} DeepSeek 用量：<b>{usage["total_tokens"]}</b> / {settings.llm.daily_token_limit} Token；'
         f'估算 <b>${usage["estimated_cost_usd"]:.4f}</b> / ${settings.llm.daily_cost_limit_usd:.2f}。'
         '</aside>'
         + site_link
@@ -173,6 +183,8 @@ def build_daily_message(
         "recipient": recipient,
         "news": len(news),
         "papers": len(papers),
+        "digest_date": local.date().isoformat(),
+        "usage_date": usage_date,
         "llm_usage": usage,
     }
 
@@ -183,10 +195,11 @@ def send_daily_email(
     site_url: str = "",
     now: Optional[datetime] = None,
     smtp_factory: Optional[Callable[..., Any]] = None,
+    target_date: str = "",
 ) -> Dict[str, Any]:
     if not settings.email.auth_code:
         raise EmailConfigurationError("163 SMTP authorization code is missing")
-    message, result = build_daily_message(settings, database, site_url, now)
+    message, result = build_daily_message(settings, database, site_url, now, target_date)
     factory = smtp_factory or smtplib.SMTP_SSL
     context = ssl.create_default_context()
     with factory(

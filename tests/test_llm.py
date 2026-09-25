@@ -410,7 +410,9 @@ class DeepSeekScreenerTests(unittest.TestCase):
                 opener=opener,
                 clock=lambda: datetime(2026, 8, 29, tzinfo=timezone.utc),
             )
-            screened = screener.screen([make_item(), make_item()], "news")
+            first, second = make_item(), make_item()
+            second.canonical_url += "-second"
+            screened = screener.screen([first, second], "news")
 
             self.assertEqual(len(screened), 2)
             self.assertEqual(len(calls), 3)
