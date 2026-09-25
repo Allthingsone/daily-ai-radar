@@ -100,6 +100,8 @@ class WorkflowScheduleTests(unittest.TestCase):
     def test_dated_replay_keeps_billing_cache_and_delivery_dates_separate(self):
         path = ROOT / ".github" / "workflows" / "pages.yml"
         workflow = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        self.assertIn("inputs.target_date", workflow["run-name"])
+        self.assertIn(" · replay {0}", workflow["run-name"])
         self.assertEqual(workflow["on"]["workflow_dispatch"]["inputs"]["target_date"]["default"], "")
         build = workflow["jobs"]["build"]
         steps = {step["name"]: step for step in build["steps"]}

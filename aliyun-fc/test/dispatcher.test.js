@@ -240,6 +240,25 @@ test("safe dry-run checks state but never posts a dispatch", async () => {
   assert.equal(calls.some((call) => call.options.method === "POST"), false);
 });
 
+test("a historical replay completed today does not suppress today's publication", async () => {
+  const result = await handleTimer(
+    { triggerTime: "2026-09-26T00:05:00Z", payload: '{"phase":"publish","dry_run":true}' },
+    ENV,
+    async (url, options = {}) => {
+      assert.notEqual(options.method, "POST");
+      if (String(url).includes("latest.json")) {
+        return { ok: true, status: 200, json: async () => ({ generated_at: "2026-09-24T02:00:00Z" }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ workflow_runs: [{
+        status: "completed", conclusion: "success",
+        display_title: "Daily radar · publish · replay 2026-09-25",
+        created_at: "2026-09-25T18:28:47Z",
+      }] }) };
+    },
+  );
+  assert.equal(result.reason, "dry-run-would-dispatch");
+});
+
 test("watchdog dispatches the requested phase when no run is active", async () => {
   const calls = [];
   const fakeFetch = async (url, options = {}) => {

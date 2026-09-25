@@ -1,5 +1,5 @@
 name: Daily radar and GitHub Pages
-run-name: Daily radar · ${{ inputs.phase || 'publish' }}
+run-name: Daily radar · ${{ inputs.phase || 'publish' }}${{ inputs.target_date && format(' · replay {0}', inputs.target_date) || '' }}
 
 on:
   workflow_dispatch:

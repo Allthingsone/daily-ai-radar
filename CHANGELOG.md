@@ -5,6 +5,7 @@
 - Checkpoint validated news, paper-triage and final paper decisions per item; isolate unsupported evidence to individual retries without relaxing exact-excerpt validation or publishing partial results.
 - Support forced historical digest replays with `target_date`, preserved news snapshots, date-specific Pages archives and email, while accounting for DeepSeek usage on the actual execution date and retaining the live homepage's freshness date.
 - Preserve published historical archives across subsequent daily deployments and keep normal daily budget ceilings unchanged.
+- Label historical workflow runs with their replay date so the existing timer cannot mistake them for same-day publication success.
 - Add an opt-in budget override for a single forced manual rerun (700k Token / USD 1.50 including prior daily usage), without changing scheduled-run defaults.
 - Extend both paper-screening stages to driving and indoor vision-language navigation (VLN), including non-large-model methods and task-specific datasets/benchmarks, while preserving the original multimodal autonomous-driving route and unchanged news policy.
 - Validate independent VLN/indoor flags and relevance dimensions, add a VLN category, and update Pages, dashboard, email and export scope labels.
