@@ -233,7 +233,14 @@ class PipelinePaperTests(unittest.TestCase):
             collect_news.assert_not_called()
 
     def test_publish_on_confirmed_arxiv_closure_reuses_news_and_records_success(self):
-        fixed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+        for fixed in (
+            datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 13, 7, 0, tzinfo=timezone.utc),
+        ):
+            with self.subTest(now=fixed):
+                self._assert_closure_publish_reuses_news(fixed)
+
+    def _assert_closure_publish_reuses_news(self, fixed):
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")
             settings = replace(load_settings(), database_path=database.path)

@@ -11,7 +11,7 @@ from daily_radar.collectors.community import (
     parse_juejin_ranked_article,
 )
 from daily_radar.collectors.rss import parse_feed
-from daily_radar.config import NetworkSettings, PaperSettings, SourceConfig
+from daily_radar.config import NetworkSettings, PaperSettings, SourceConfig, load_settings
 
 
 RSS = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -319,10 +319,13 @@ class CollectorParserTests(unittest.TestCase):
         fetch.assert_not_called()
 
     def test_confirmed_deferred_mailing_is_a_valid_empty_shanghai_day(self):
-        papers = PaperSettings(deferred_announcement_dates=["2026-09-07"])
+        # Exercise the shipped calendar, so an omitted official closure fails CI.
+        papers = load_settings().papers
         for fixed in (
             datetime(2026, 9, 7, 23, 30, tzinfo=timezone.utc),
             datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 12, 23, 30, tzinfo=timezone.utc),
+            datetime(2026, 10, 13, 7, 0, tzinfo=timezone.utc),
         ):
             with self.subTest(now=fixed):
                 collector = ArxivCollector(papers, NetworkSettings())
@@ -383,13 +386,57 @@ class CollectorParserTests(unittest.TestCase):
         ))
 
     def test_resumed_mailing_still_waits_for_its_release_time(self):
-        papers = PaperSettings(deferred_announcement_dates=["2026-09-07"])
+        papers = load_settings().papers
         collector = ArxivCollector(papers, NetworkSettings())
-        before_release = datetime(2026, 9, 8, 23, 30, tzinfo=timezone.utc)
-        with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
-            result = collector.collect(now=before_release)
-        self.assertIn("not available yet", result.error)
-        fetch.assert_not_called()
+        for before_release in (
+            datetime(2026, 9, 8, 23, 30, tzinfo=timezone.utc),
+            datetime(2026, 10, 13, 23, 30, tzinfo=timezone.utc),
+        ):
+            with self.subTest(now=before_release):
+                with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
+                    result = collector.collect(now=before_release)
+                self.assertIn("not available yet", result.error)
+                fetch.assert_not_called()
+
+    def test_october_recovery_covers_the_whole_official_submission_interval(self):
+        settings = load_settings()
+        collector = ArxivCollector(settings.papers, settings.network)
+        fixed = datetime(2026, 10, 14, 2, 0, tzinfo=timezone.utc)
+        submissions = (
+            "2026-10-09T18:00:00Z",  # Friday 14:00 ET, inclusive.
+            "2026-10-12T15:00:00Z",  # The deferred Monday batch.
+            "2026-10-13T17:59:00Z",  # Tuesday before 14:00 ET.
+        )
+        entries = "".join(
+            f"""<entry>
+              <id>http://arxiv.org/abs/2610.{index:05d}v1</id>
+              <published>{submitted}</published><updated>{submitted}</updated>
+              <title>Deferred October paper {index}</title><summary>Public abstract.</summary>
+              <author><name>A. Author</name></author><category term="cs.AI"/>
+            </entry>"""
+            for index, submitted in enumerate(submissions, start=1)
+        )
+        payload = f"""<feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+          <opensearch:totalResults>3</opensearch:totalResults>{entries}</feed>"""
+        response = FetchResponse(
+            payload.encode("utf-8"), "https://export.arxiv.org/api/query",
+            200, "application/atom+xml",
+        )
+        with patch("daily_radar.collectors.arxiv.fetch_response", return_value=response) as fetch:
+            result = collector.collect(now=fixed)
+        self.assertEqual(result.error, "")
+        self.assertEqual(len(result.items), len(submissions))
+        search = parse_qs(urlsplit(fetch.call_args.args[0]).query)["search_query"][0]
+        self.assertIn("submittedDate:[202610091800 TO 202610131759]", search)
+        self.assertEqual(
+            [item.metadata["arxiv_first_submitted_at"] for item in result.items],
+            [value.replace("Z", "+00:00") for value in submissions],
+        )
+        self.assertTrue(all(
+            item.published_at == datetime(2026, 10, 14, 0, 0, tzinfo=timezone.utc)
+            for item in result.items
+        ))
 
 
 if __name__ == "__main__":

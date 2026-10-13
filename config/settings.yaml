@@ -24,8 +24,12 @@ papers:
   # 官方确认停发的美东公告日期；不把所有美国节假日都当成停发日。
   # https://info.arxiv.org/help/availability.html#2026-holidays
   # 9 月 4 日 14:00 至 9 月 8 日 14:00 的投稿合并到美东 9 月 8 日公告。
+  # 10 月 12 日停发：10 月 9 日 14:00 至 10 月 13 日 14:00 的投稿
+  # 合并到美东 10 月 13 日 20:00（北京时间 10 月 14 日 08:00）公告。
+  # https://arxiv-org.atlassian.net/servicedesk/customer/portals
   deferred_announcement_dates:
     - "2026-09-07"
+    - "2026-10-12"
   categories:
     - cs.CV
     - cs.RO

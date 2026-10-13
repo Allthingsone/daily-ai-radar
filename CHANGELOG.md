@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Register the official October 12, 2026 Eastern arXiv closure so the October 13 Shanghai news digest can publish without paper-collection failures; carry the October 9–13 submission backlog into October 14's announcement.
+- Exercise the shipped closure calendar, no-network holiday collection, news reuse, repeat-publish reuse and the complete post-holiday submission interval in regression tests.
 - Checkpoint validated news, paper-triage and final paper decisions per item; isolate unsupported evidence to individual retries without relaxing exact-excerpt validation or publishing partial results.
 - Support forced historical digest replays with `target_date`, preserved news snapshots, date-specific Pages archives and email, while accounting for DeepSeek usage on the actual execution date and retaining the live homepage's freshness date.
 - Preserve published historical archives across subsequent daily deployments and keep normal daily budget ceilings unchanged.

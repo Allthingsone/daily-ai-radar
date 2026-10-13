@@ -204,6 +204,8 @@ VLN 指基于视觉观测与自然语言指令/目标进行导航，包括指令
 
 arXiv 官方确认的停发日期通过 `papers.deferred_announcement_dates` 配置，日期使用美东时间。已加入 [2026 年 9 月 7 日停发公告](https://arxiv-org.atlassian.net/servicedesk/customer/portal/1/group/1/create/1)：北京时间 9 月 8 日正常发布新闻，论文记录为 `announcement_status=not_scheduled`；9 月 9 日的论文查询从美东 9 月 4 日 14:00 开始，覆盖节日期间积压的投稿。后续停发日期应依据官方公告维护；正常公告日 API 为空且备用列表无法完整核验时，仍报错并等待重试。
 
+同样已加入 [美东 2026 年 10 月 12 日停发通知](https://arxiv-org.atlassian.net/servicedesk/customer/portals)：北京时间 10 月 13 日复用已完成的新闻筛选，论文阶段正常记录为停发，不再因空结果阻止发信与发布；10 月 14 日 08:00 恢复公告时，查询覆盖美东 10 月 9 日 14:00 至 10 月 13 日 14:00 的完整积压区间。停发日仍须邮件和 Pages 均成功后才写入成功标记，后续备用触发才能安全跳过。
+
 默认 50 万 Token / 1 美元预算用于降低高论文量日的 Token 上限失败概率。若当天分类论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 继续调整上限，页面会按阶段记录实际用量。
 
 ### “真实性”的技术边界
