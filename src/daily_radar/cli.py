@@ -32,7 +32,7 @@ from .verification import audit_database
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="daily-radar",
-        description="每日 AI 新闻、自动驾驶多模态与 VLN（自动驾驶/室内导航）论文雷达",
+        description="每日 AI 新闻、VLA/WAM 表征、重要 Embedding 模型与机械臂 Benchmark 论文雷达",
     )
     parser.add_argument(
         "--config", default="", help="配置文件路径，默认 config/settings.yaml"

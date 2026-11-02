@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replace the paper scope with VLA/WAM representation research, significant embedding-model releases, and significant robot-manipulation benchmarks; retain the news policy.
+- Apply the new scope in both screening stages, validate category-specific gates and relevance dimensions, and add arXiv `cs.IR` and `cs.MM` coverage without keyword prefilters.
+- Advance the prompt version to `2026-11-02-v5` so previous-scope decisions cannot enter the current feed; update Pages, dashboard, email, exports, documentation, and isolated demo fixtures.
 - Register the official October 12, 2026 Eastern arXiv closure so the October 13 Shanghai news digest can publish without paper-collection failures; carry the October 9–13 submission backlog into October 14's announcement.
 - Exercise the shipped closure calendar, no-network holiday collection, news reuse, repeat-publish reuse and the complete post-holiday submission interval in regression tests.
 - Checkpoint validated news, paper-triage and final paper decisions per item; isolate unsupported evidence to individual retries without relaxing exact-excerpt validation or publishing partial results.

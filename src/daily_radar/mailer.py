@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from .config import Settings
 from .db import Database
+from .paper_policy import PAPER_HEADING
 from .time_windows import build_period_window, digest_end, digest_reference, news_snapshot_reference
 
 
@@ -142,7 +143,7 @@ def build_daily_message(
         "",
     ]
     text_lines.extend(_text_section("AI 新发布与技术成果", news))
-    text_lines.extend(_text_section("今日自动驾驶多模态与 VLN（自动驾驶/室内导航）论文", papers))
+    text_lines.extend(_text_section("今日" + PAPER_HEADING, papers))
     text_lines.append(
         f"{usage_date} DeepSeek 用量：{usage['total_tokens']} / {settings.llm.daily_token_limit} Token，"
         f"估算 ${usage['estimated_cost_usd']:.4f} / ${settings.llm.daily_cost_limit_usd:.2f}。"
@@ -162,7 +163,7 @@ def build_daily_message(
         f'<small>DAILY AI RADAR</small><h1 style="margin:8px 0">{local:%Y-%m-%d} AI 情报</h1>'
         '<p style="margin:0;color:#cbd5e1">来源硬校验 · V4-Pro 两阶段论文筛选 · 最终 Thinking max</p></header>'
         + _html_section("AI 新发布与技术成果", news)
-        + _html_section("今日自动驾驶多模态与 VLN（自动驾驶/室内导航）论文", papers)
+        + _html_section("今日" + PAPER_HEADING, papers)
         + '<aside style="padding:14px;background:#f2f4f7;border-radius:8px;color:#475467">'
         f'{usage_date} DeepSeek 用量：<b>{usage["total_tokens"]}</b> / {settings.llm.daily_token_limit} Token；'
         f'估算 <b>${usage["estimated_cost_usd"]:.4f}</b> / ${settings.llm.daily_cost_limit_usd:.2f}。'

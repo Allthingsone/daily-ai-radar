@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import List
 
+from .config import LLMSettings
 from .db import Database
 from .eligibility import LLM_SCREENING_RULE_VERSION
 from .models import RadarItem
+from .paper_policy import PAPER_CATEGORY_LABELS, PAPER_DIMENSION_LABELS, PAPER_FLAGS
 from .processing.normalize import canonicalize_url, fingerprint_title
-from .processing.scoring import score_news, score_paper
+from .processing.scoring import score_news
 
 
 def _base_item(
@@ -86,7 +88,7 @@ def build_demo_items() -> List[RadarItem]:
             "selected": True,
             "rule_version": LLM_SCREENING_RULE_VERSION,
             "provider": "demo",
-            "prompt_version": "2026-09-17-v4",
+            "prompt_version": LLMSettings().prompt_version,
         }
     news[0].metadata["community_signals"] = [
         {
@@ -102,35 +104,40 @@ def build_demo_items() -> List[RadarItem]:
 
     paper_specs = [
         (
-            "drive-vla",
-            "[演示论文] DriveVLA: Vision-Language-Action Models for End-to-End Autonomous Driving",
-            "We propose a vision-language-action framework for end-to-end autonomous driving. "
-            "The driving agent predicts trajectories and control commands and is evaluated in closed-loop CARLA and Bench2Drive experiments.",
+            "vla-action-tokens",
+            "[演示论文] Shared Action Representations for Vision-Language-Action Policies",
+            "We learn shared action tokens for vision-language-action policies. "
+            "Controlled experiments study cross-embodiment transfer for robot arm manipulation.",
             4,
+            "vla-representation", ("is_vla", "is_representation_research"),
         ),
         (
-            "reason-drive",
-            "[演示论文] ReasonDrive: Multimodal Large Language Models for Driving Planning",
-            "We introduce a multimodal large language model for autonomous driving scene reasoning and motion planning. "
-            "Experiments on nuScenes and NAVSIM benchmark the model against vision-language model baselines.",
+            "wam-world-state",
+            "[演示论文] Spatial State Representations for World Action Models",
+            "A world action model jointly predicts robot actions and future observations. "
+            "We compare spatial and visual latent states for policy learning and dynamics prediction.",
             11,
+            "wam-representation", ("is_world_action_model", "is_representation_research"),
         ),
         (
-            "world-vla",
-            "[演示论文] WorldVLA: A Driving World Model with Language-Guided Actions",
-            "This novel world model is a vision-language-action architecture for self-driving vehicles. "
-            "It learns a driving policy and is validated with closed-loop trajectory planning experiments.",
+            "multimodal-embedding",
+            "[演示论文] Universal Multimodal Embedding Model Technical Report",
+            "We release a reusable text, image and video embedding model with public weights. "
+            "Systematic multilingual retrieval evaluations show substantial gains across tasks.",
             27,
+            "embedding-model", ("is_embedding_model", "is_model_release", "is_significant_contribution"),
         ),
         (
-            "drive-bench",
-            "[演示论文] DriveBench-MLLM: Evaluating Vision-Language Models in Autonomous Vehicles",
-            "We introduce a benchmark and open dataset for large vision-language model evaluation in autonomous driving scenarios, including safety and robustness tests.",
+            "manipulation-benchmark",
+            "[演示论文] A Reproducible Benchmark for Bimanual Robot Manipulation",
+            "We introduce a robot arm manipulation benchmark spanning diverse long-horizon tasks. "
+            "Reusable protocols and systematic baseline comparisons evaluate robustness and generalization.",
             31,
+            "manipulation-benchmark", ("is_robot_manipulation", "is_benchmark", "is_significant_contribution"),
         ),
     ]
     papers: List[RadarItem] = []
-    for index, (slug, title, abstract, hours_ago) in enumerate(paper_specs):
+    for index, (slug, title, abstract, hours_ago, category, active_flags) in enumerate(paper_specs):
         item = _base_item(
             "paper", slug, title, abstract, hours_ago, "arXiv 演示数据", "paper-api"
         )
@@ -143,19 +150,30 @@ def build_demo_items() -> List[RadarItem]:
                 "pdf_url": "",
             }
         )
-        passed, item = score_paper(
-            item, ["vision-language-action", "closed-loop", "world model"]
+        # Explicitly fictional display fixtures, never a production fallback.
+        item.category = category
+        item.score = 88 - index * 3
+        item.is_important = True
+        item.tags = ["DEMO", category]
+        item.component_scores = dict.fromkeys(PAPER_DIMENSION_LABELS, 0)
+        relevance = (
+            ("vla_wam_relevance", "representation_relevance") if index < 2
+            else ("embedding_relevance",) if index == 2
+            else ("manipulation_benchmark_relevance",)
         )
-        if passed:
-            item.tags.insert(0, "DEMO")
-            item.is_important = item.score >= 42
-            item.metadata["llm_screening"] = {
-                "selected": True,
-                "rule_version": LLM_SCREENING_RULE_VERSION,
-                "provider": "demo",
-                "prompt_version": "2026-09-17-v4",
-            }
-            papers.append(item)
+        item.component_scores.update(dict.fromkeys(relevance, 90))
+        item.component_scores.update(method_novelty=80, evidence_quality=80, reproducibility=60)
+        flags = dict.fromkeys(PAPER_FLAGS, False)
+        flags.update(dict.fromkeys(active_flags, True))
+        flags["is_substantive_contribution"] = True
+        item.metadata["summary_zh"] = "离线演示：" + PAPER_CATEGORY_LABELS[category] + "，非真实论文。"
+        item.reasons = ["离线演示数据，不代表真实模型筛选结果"]
+        item.metadata["llm_screening"] = {
+            "selected": True, "rule_version": LLM_SCREENING_RULE_VERSION,
+            "provider": "demo", "prompt_version": LLMSettings().prompt_version,
+            "flags": flags,
+        }
+        papers.append(item)
     return news + papers
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .db import Database
+from .paper_policy import PAPER_HEADING
 from .processing.scoring import news_category_label, paper_category_label
 
 
@@ -49,7 +50,7 @@ def export_markdown(
         f"> Generated at {generated_at.isoformat()}",
         "",
     ]
-    for kind, heading in (("news", "AI 新闻"), ("paper", "自动驾驶多模态与 VLN（自动驾驶/室内导航）论文")):
+    for kind, heading in (("news", "AI 新闻"), ("paper", PAPER_HEADING)):
         lines.extend([f"## {heading}", ""])
         selected = [item for item in items if item["kind"] == kind]
         if not selected:
@@ -108,7 +109,7 @@ def export_rss(
     channel = ET.SubElement(rss, "channel")
     ET.SubElement(channel, "title").text = "Daily AI Radar"
     ET.SubElement(channel, "description").text = (
-        "AI news, multimodal autonomous driving, and driving/indoor VLN paper digest"
+        "AI news, VLA/WAM representations, embedding releases and robot manipulation benchmarks"
     )
     ET.SubElement(channel, "link").text = channel_link
     ET.SubElement(channel, "lastBuildDate").text = format_datetime(

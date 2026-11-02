@@ -13,12 +13,14 @@ from fastapi.templating import Jinja2Templates
 from .. import __version__
 from ..config import load_settings
 from ..db import Database
+from ..paper_policy import PAPER_DIMENSION_LABELS
 from ..processing.scoring import news_category_label, paper_category_label
 from ..time_windows import PeriodWindow, build_period_window
 
 
 WEB_ROOT = Path(__file__).resolve().parent
 COMPONENT_MAX = {
+    **dict.fromkeys(PAPER_DIMENSION_LABELS, 100),
     "semantic_relevance": 100,
     "evidence_quality": 100,
     "mllm_vla_relevance": 100,
@@ -43,6 +45,7 @@ COMPONENT_MAX = {
 }
 
 COMPONENT_LABELS = {
+    **PAPER_DIMENSION_LABELS,
     "semantic_relevance": "语义相关性",
     "evidence_quality": "证据质量",
     "mllm_vla_relevance": "MLLM/VLA 相关性",
@@ -118,7 +121,7 @@ def create_app(config_path: str = "") -> FastAPI:
 
     app = FastAPI(
         title="Daily AI Radar",
-        description="AI news, multimodal autonomous driving, and driving/indoor VLN paper radar",
+        description="AI news, VLA/WAM representations, embedding releases and robot manipulation benchmarks",
         version=__version__,
     )
     app.mount(

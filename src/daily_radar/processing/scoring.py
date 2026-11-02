@@ -7,6 +7,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 
 from ..eligibility import NEWS_GATE_RULE_VERSION
 from ..models import RadarItem
+from ..paper_policy import PAPER_CATEGORY_LABELS
 from .normalize import unique_preserving_order
 
 
@@ -625,6 +626,7 @@ def score_news(
 
 
 def paper_gate(item: RadarItem) -> Tuple[bool, Dict[str, object]]:
+    """Legacy offline heuristic; not used by collection, current policy or demos."""
     text = f"{item.title} {item.summary}".lower()
     model_matches = _matches(text, PAPER_MODEL_TERMS)
     driving_matches = _matches(text, PAPER_DRIVING_TERMS)
@@ -791,6 +793,9 @@ def news_category_label(value: str) -> str:
 
 
 def paper_category_label(value: str) -> str:
+    if value in PAPER_CATEGORY_LABELS:
+        return PAPER_CATEGORY_LABELS[value]
+    # Retain labels for historical records, not as active screening routes.
     return {
         "vla-policy": "VLA 策略",
         "mllm-reasoning": "MLLM 推理",

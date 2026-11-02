@@ -155,7 +155,7 @@ class ArxivCollector:
             f"submittedDate:[{published_since:%Y%m%d%H%M} "
             f"TO {inclusive_end:%Y%m%d%H%M}]"
         )
-        # Do not pre-filter on MLLM/VLA/driving words here: every new paper in
+        # Do not pre-filter on VLA/WAM/embedding words here: every new paper in
         # the configured categories must reach the semantic triage stage.
         query = f"({categories}) AND {date_range}"
         params = {

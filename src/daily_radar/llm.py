@@ -14,6 +14,7 @@ from .config import LLMSettings
 from .db import Database
 from .eligibility import LLM_SCREENING_RULE_VERSION
 from .models import RadarItem
+from .paper_policy import PAPER_CATEGORY_LABELS, PAPER_DIMENSION_LABELS, PAPER_FLAGS
 from .processing.normalize import unique_preserving_order
 
 
@@ -35,16 +36,7 @@ NEWS_CATEGORIES = {
     "community-trending",
     "not-relevant",
 }
-PAPER_CATEGORIES = {
-    "vla-policy",
-    "mllm-reasoning",
-    "vision-language-navigation",
-    "perception-understanding",
-    "world-model",
-    "planning",
-    "benchmark-dataset",
-    "other",
-}
+PAPER_CATEGORIES = set(PAPER_CATEGORY_LABELS)
 
 
 class LLMConfigurationError(RuntimeError):
@@ -582,13 +574,7 @@ class DeepSeekScreener:
                             "has_verifiable_heat_signal": False,
                         }
                         if kind == "news"
-                        else {
-                            "is_mllm_vla": True,
-                            "is_autonomous_driving": True,
-                            "is_vln": False,
-                            "is_indoor_navigation": False,
-                            "is_substantive_application": False,
-                        }
+                        else dict.fromkeys(PAPER_FLAGS, False)
                     ),
                     "importance_score": 0,
                     "confidence": 0.0,
@@ -606,15 +592,7 @@ class DeepSeekScreener:
                             "evidence_quality": 0,
                         }
                         if kind == "news"
-                        else {
-                            "mllm_vla_relevance": 0,
-                            "driving_relevance": 0,
-                            "vln_relevance": 0,
-                            "indoor_navigation_relevance": 0,
-                            "method_novelty": 0,
-                            "evidence_quality": 0,
-                            "reproducibility": 0,
-                        }
+                        else dict.fromkeys(PAPER_DIMENSION_LABELS, 0)
                     ),
                 }
             ]
@@ -1074,39 +1052,31 @@ class DeepSeekScreener:
             )
         else:
             flags = {
-                "is_mllm_vla": _required_bool(
-                    raw.get("is_mllm_vla"), "is_mllm_vla"
-                ),
-                "is_autonomous_driving": _required_bool(
-                    raw.get("is_autonomous_driving"), "is_autonomous_driving"
-                ),
-                "is_vln": _required_bool(raw.get("is_vln"), "is_vln"),
-                "is_indoor_navigation": _required_bool(
-                    raw.get("is_indoor_navigation"), "is_indoor_navigation"
-                ),
-                "is_substantive_application": _required_bool(
-                    raw.get("is_substantive_application"),
-                    "is_substantive_application",
-                ),
+                name: _required_bool(raw.get(name), name) for name in PAPER_FLAGS
             }
-            driving_route = flags["is_mllm_vla"] and flags["is_autonomous_driving"]
-            vln_route = flags["is_vln"] and (
-                flags["is_autonomous_driving"] or flags["is_indoor_navigation"]
-            )
+            route_gate = {
+                "vla-representation": (
+                    flags["is_vla"] and flags["is_representation_research"]
+                ),
+                "wam-representation": (
+                    flags["is_world_action_model"] and flags["is_representation_research"]
+                ),
+                "embedding-model": (
+                    flags["is_embedding_model"] and flags["is_model_release"]
+                    and flags["is_significant_contribution"]
+                ),
+                "manipulation-benchmark": (
+                    flags["is_robot_manipulation"] and flags["is_benchmark"]
+                    and flags["is_significant_contribution"]
+                ),
+                "other": False,
+            }[category]
             selected = (
                 selected
-                and flags["is_substantive_application"]
-                and (driving_route or vln_route)
+                and flags["is_substantive_contribution"]
+                and route_gate
             )
-            dimension_names = (
-                "mllm_vla_relevance",
-                "driving_relevance",
-                "vln_relevance",
-                "indoor_navigation_relevance",
-                "method_novelty",
-                "evidence_quality",
-                "reproducibility",
-            )
+            dimension_names = tuple(PAPER_DIMENSION_LABELS)
 
         dimensions_raw = raw.get("dimension_scores")
         if not isinstance(dimensions_raw, dict):

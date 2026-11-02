@@ -13,6 +13,7 @@ from . import __version__
 from .config import Settings
 from .db import Database
 from .exporter import export_markdown, export_rss
+from .paper_policy import PAPER_DIMENSION_LABELS
 from .processing.scoring import news_category_label, paper_category_label
 from .time_windows import PeriodWindow, build_period_window, digest_end, digest_reference, news_snapshot_reference
 
@@ -30,6 +31,7 @@ VERIFICATION_LABELS = {
 }
 
 COMPONENT_LABELS = {
+    **PAPER_DIMENSION_LABELS,
     "semantic_relevance": "语义相关性",
     "novelty": "新颖性",
     "ai_relevance": "AI 相关性",

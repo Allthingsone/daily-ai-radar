@@ -12,7 +12,7 @@
 1. 直接编辑对应 Markdown 文件。
 2. 新闻、论文初筛和论文复筛 Prompt 必须保留 `{{schema_json}}` 与 `{{candidates_json}}`。
 3. 不要删除 Prompt 要求的 JSON 字段；这些字段会由 `llm.py` 严格校验。
-4. 在 `config/settings.yaml` 中递增 `prompt_version`，并同步 `src/daily_radar/config.py` 的默认值与演示数据版本。当前版本为 `2026-09-17-v4`（新增自动驾驶/室内 VLN）。
+4. 在 `config/settings.yaml` 中递增 `prompt_version`，并同步 `src/daily_radar/config.py` 的默认值；演示数据自动使用该默认版本。当前版本为 `2026-11-02-v5`（VLA/WAM 表征、重要 embedding 模型发布、重要机械臂 benchmark）。
 5. 运行以下离线检查，不会调用 DeepSeek：
 
 ```bash
@@ -24,4 +24,4 @@ python -m unittest discover -s tests -v
 
 论文初筛和严格复筛会分别保存自己的 Prompt SHA-256；每条正式结果都会保存当前 `prompt_version`。页面、导出和邮件只读取当前版本的结果，因此修改规则后不会把旧 Prompt 的判断混入当前 Feed。采集成功记录也保存版本，`publish` 只复用当天且版本相同的结果，避免新规则被同日旧结果跳过；未记录版本的旧缓存会重新筛选。若当天已完整发布，手动工作流仍需勾选 `force` 才能越过当日发送去重，且会重新消耗预算并发送邮件。
 
-论文规则包含两条并列路径：自动驾驶多模态，或自动驾驶/室内 VLN。调整范围时必须同时修改 `paper_triage.md` 与 `paper_screening.md`，避免初筛先淘汰新方向；增加布尔字段或维度时也必须同步 `llm.py` 的 JSON 示例、校验与测试。新闻 Prompt 不受此次 VLN 扩展影响。
+论文规则包含三条独立路径：VLA/WAM 领域的表征研究、重要 embedding 模型发布、重要机械臂 benchmark。第一条路径不限表征形式，后两条无需涉及 VLA/WAM，但必须有原文支撑的重要贡献。自动驾驶或 VLN 不再独立构成入选理由。调整范围时必须同时修改 `paper_triage.md` 与 `paper_screening.md`，避免初筛先淘汰新方向；增加布尔字段、分类或维度时，也必须同步 `paper_policy.py` 的共享定义、`llm.py` 的分类门槛与测试。新闻 Prompt 不受此次论文方向调整影响。
