@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Register the official November 11 and November 26, 2026 Eastern arXiv closures; include the complete Veterans Day and Thanksgiving submission backlogs in the November 13 and November 30 Shanghai digests, with regression coverage for closure days, winter release times, and news reuse.
 - Replace the paper scope with VLA/WAM representation research, significant embedding-model releases, and significant robot-manipulation benchmarks; retain the news policy.
 - Apply the new scope in both screening stages, validate category-specific gates and relevance dimensions, and add arXiv `cs.IR` and `cs.MM` coverage without keyword prefilters.
 - Advance the prompt version to `2026-11-02-v5` so previous-scope decisions cannot enter the current feed; update Pages, dashboard, email, exports, documentation, and isolated demo fixtures.

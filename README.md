@@ -209,6 +209,8 @@ arXiv 官方确认的停发日期通过 `papers.deferred_announcement_dates` 配
 
 同样已加入 [美东 2026 年 10 月 12 日停发通知](https://arxiv-org.atlassian.net/servicedesk/customer/portals)：北京时间 10 月 13 日复用已完成的新闻筛选，论文阶段正常记录为停发，不再因空结果阻止发信与发布；10 月 14 日 08:00 恢复公告时，查询覆盖美东 10 月 9 日 14:00 至 10 月 13 日 14:00 的完整积压区间。停发日仍须邮件和 Pages 均成功后才写入成功标记，后续备用触发才能安全跳过。
 
+已补充[美东 2026 年 11 月 11 日停发公告](https://blog.arxiv.org/2026/11/06/announcement-change-veterans-day/)：北京时间 11 月 12 日无新公告，11 月 13 日 09:00 恢复批次覆盖美东 11 月 10 日 14:00 至 11 月 12 日 14:00 的两天投稿，避免漏掉节日期间积压论文。也已依据[官方日历](https://info.arxiv.org/help/availability.html#2026-holidays)登记 11 月 26 日停发；北京时间 11 月 30 日的恢复批次覆盖美东 11 月 25 日至 27 日的投稿区间。恢复日若官方数据仍未更新，日期与完整性检查仍会阻止发布旧数据。
+
 默认 50 万 Token / 1 美元预算用于降低高论文量日的 Token 上限失败概率。若当天分类论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 继续调整上限，页面会按阶段记录实际用量。
 
 ### “真实性”的技术边界

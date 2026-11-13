@@ -236,6 +236,8 @@ class PipelinePaperTests(unittest.TestCase):
         for fixed in (
             datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc),
             datetime(2026, 10, 13, 7, 0, tzinfo=timezone.utc),
+            datetime(2026, 11, 12, 7, 0, tzinfo=timezone.utc),
+            datetime(2026, 11, 27, 7, 0, tzinfo=timezone.utc),
         ):
             with self.subTest(now=fixed):
                 self._assert_closure_publish_reuses_news(fixed)

@@ -27,9 +27,15 @@ papers:
   # 10 月 12 日停发：10 月 9 日 14:00 至 10 月 13 日 14:00 的投稿
   # 合并到美东 10 月 13 日 20:00（北京时间 10 月 14 日 08:00）公告。
   # https://arxiv-org.atlassian.net/servicedesk/customer/portals
+  # 11 月 11 日停发：11 月 10 日 14:00 至 11 月 12 日 14:00 的投稿
+  # 合并到美东 11 月 12 日 20:00（北京时间 11 月 13 日 09:00）公告。
+  # https://blog.arxiv.org/2026/11/06/announcement-change-veterans-day/
+  # 官方日历也已确认 11 月 26 日停发；积压投稿随 11 月 29 日公告发布。
   deferred_announcement_dates:
     - "2026-09-07"
     - "2026-10-12"
+    - "2026-11-11"
+    - "2026-11-26"
   categories:
     - cs.CV
     - cs.RO
