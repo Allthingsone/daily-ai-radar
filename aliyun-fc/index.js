@@ -1,10 +1,12 @@
 "use strict";
 
 const SHANGHAI_TIMEZONE = "Asia/Shanghai";
-const NEW_YORK_TIMEZONE = "America/New_York";
 const VALID_PHASES = new Set(["news", "publish", "auto"]);
 const AUTO_WINDOW_START_MINUTE = 7 * 60;
 const AUTO_WINDOW_END_MINUTE = 10 * 60 + 30;
+const PUBLISH_START_MINUTE = 8 * 60;
+const MAX_PUBLISH_ATTEMPTS = 3;
+const PUBLISH_RUN_TITLE = "Daily radar · previous-day papers · publish";
 const REQUIRED_ENVIRONMENT = [
   "GITHUB_ACTIONS_TOKEN",
   "GITHUB_OWNER",
@@ -110,51 +112,17 @@ function shanghaiMinuteOfDay(date) {
   return Number(parts.hour) * 60 + Number(parts.minute);
 }
 
-function shanghaiWeekday(date) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: SHANGHAI_TIMEZONE,
-    weekday: "short",
-  }).format(date);
-}
-
-function newYorkOffsetMinutes(date) {
-  const name = new Intl.DateTimeFormat("en-US", {
-    timeZone: NEW_YORK_TIMEZONE,
-    timeZoneName: "longOffset",
-  })
-    .formatToParts(date)
-    .find((part) => part.type === "timeZoneName")?.value;
-  const match = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/.exec(name || "");
-  if (!match) {
-    throw new Error(`Unable to resolve New York UTC offset: ${name || "unknown"}`);
-  }
-  const sign = match[1] === "+" ? 1 : -1;
-  return sign * (Number(match[2]) * 60 + Number(match[3] || 0));
-}
-
-function expectedArxivReleaseMinute(date) {
-  // arXiv announces at 20:00 US Eastern: 08:00 Shanghai during daylight
-  // saving time and 09:00 during standard time.
-  const raw = 20 * 60 - newYorkOffsetMinutes(date) + 8 * 60;
-  return ((raw % (24 * 60)) + 24 * 60) % (24 * 60);
-}
-
 function resolveAutomaticPhase(date) {
   const minute = shanghaiMinuteOfDay(date);
   if (minute < AUTO_WINDOW_START_MINUTE || minute > AUTO_WINDOW_END_MINUTE) {
     return null;
   }
-  return minute < expectedArxivReleaseMinute(date) ? "news" : "publish";
+  // News still starts at 07:00; yesterday's papers do not wait for today's release.
+  return minute < PUBLISH_START_MINUTE ? "news" : "publish";
 }
 
 function mayStartPublish(date) {
-  const weekday = shanghaiWeekday(date);
-  if (weekday === "Sat" || weekday === "Sun") {
-    // There is no new arXiv daily announcement on Shanghai weekends, so a
-    // truthful news-only digest can be published at the first check.
-    return true;
-  }
-  return shanghaiMinuteOfDay(date) >= expectedArxivReleaseMinute(date);
+  return shanghaiMinuteOfDay(date) >= PUBLISH_START_MINUTE;
 }
 
 function timeoutSignal(env) {
@@ -204,19 +172,35 @@ function githubWorkflowUrl(env, suffix = "") {
   return `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflow}${suffix}`;
 }
 
-async function workflowRuns(env, fetchImpl) {
+async function workflowRuns(env, fetchImpl, localDate) {
   const branch = encodeURIComponent(requireSetting(env, "GITHUB_REF"));
-  const response = await fetchWithTimeout(
-    fetchImpl,
-    env,
-    githubWorkflowUrl(env, `/runs?branch=${branch}&per_page=50`),
-    { headers: githubHeaders(env) },
-  );
-  if (!response.ok) {
-    throw new Error(`GitHub workflow-runs check failed with HTTP ${response.status}`);
+  const runs = [];
+  for (let page = 1; ; page += 1) {
+    const response = await fetchWithTimeout(
+      fetchImpl, env,
+      githubWorkflowUrl(env, `/runs?branch=${branch}&per_page=100&page=${page}`),
+      { headers: githubHeaders(env) },
+    );
+    if (!response.ok) throw new Error(`GitHub workflow-runs check failed with HTTP ${response.status}`);
+    const payload = await response.json();
+    if (!Array.isArray(payload.workflow_runs)) throw new Error("GitHub workflow-runs response is incomplete");
+    runs.push(...payload.workflow_runs);
+    if (payload.workflow_runs.length < 100 || !localDate || payload.workflow_runs.some((run) => {
+      const created = new Date(run.created_at || "");
+      return !Number.isNaN(created.getTime()) && shanghaiDate(created) < localDate;
+    })) return runs;
+    if (page >= 10) throw new Error("Unable to verify today's full workflow history");
   }
-  const payload = await response.json();
-  return Array.isArray(payload.workflow_runs) ? payload.workflow_runs : [];
+}
+
+function failedPublishAttempts(runs, localDate, currentRunId = "", currentRunAttempt = 1) {
+  return Math.max(0, Number(currentRunAttempt) - 1) + runs.reduce((count, run) => {
+    if (String(run.id) === String(currentRunId) || String(run.display_title || "").trim() !== PUBLISH_RUN_TITLE
+        || run.status !== "completed" || !["failure", "timed_out"].includes(run.conclusion)) return count;
+    const started = new Date(run.run_started_at || run.created_at || "");
+    if (Number.isNaN(started.getTime()) || shanghaiDate(started) !== localDate) return count;
+    return count + Math.max(1, Number(run.run_attempt) || 1);
+  }, 0);
 }
 
 function isRunFromShanghaiDate(run, localDate) {
@@ -283,7 +267,7 @@ async function handleTimer(event, env, fetchImpl = fetch) {
   if (phase === "publish" && !mayStartPublish(now)) {
     return {
       action: "skip",
-      reason: "arxiv-not-ready",
+      reason: "before-publish-window",
       phase,
       localDate,
       dryRun,
@@ -308,7 +292,7 @@ async function handleTimer(event, env, fetchImpl = fetch) {
     console.warn(String(error));
   }
 
-  const runs = await workflowRuns(env, fetchImpl);
+  const runs = await workflowRuns(env, fetchImpl, localDate);
   if (completedPhaseToday(runs, phase, localDate)) {
     return {
       action: "skip",
@@ -328,6 +312,9 @@ async function handleTimer(event, env, fetchImpl = fetch) {
       dryRun,
       ...requestMetadata,
     };
+  }
+  if (phase === "publish" && failedPublishAttempts(runs, localDate) >= MAX_PUBLISH_ATTEMPTS) {
+    return { action: "skip", reason: "attempt-limit", phase, localDate, dryRun, ...requestMetadata };
   }
   if (dryRun) {
     return {
@@ -357,7 +344,10 @@ async function handler(event, context) {
 
 module.exports = {
   REQUIRED_ENVIRONMENT,
-  expectedArxivReleaseMinute,
+  MAX_PUBLISH_ATTEMPTS,
+  PUBLISH_RUN_TITLE,
+  failedPublishAttempts,
+  workflowRuns,
   handleTimer,
   handler,
   mayStartPublish,

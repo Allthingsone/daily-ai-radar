@@ -219,7 +219,7 @@ class CollectorParserTests(unittest.TestCase):
             sleeper=sleeps.append,
         )
         with patch("daily_radar.collectors.arxiv.fetch_response", fake_fetch):
-            result = collector.collect()
+            result = collector.collect(by_announcement=False)
 
         self.assertEqual(result.error, "")
         self.assertEqual(starts, [0, 1])
@@ -272,7 +272,7 @@ class CollectorParserTests(unittest.TestCase):
                 "daily_radar.collectors.arxiv.fetch_response",
                 side_effect=lambda url, **kwargs: FetchResponse(next(pages), url, 200, "application/atom+xml"),
             ):
-                result = collector.collect(fixed)
+                result = collector.collect(fixed, by_announcement=False)
             self.assertTrue(result.error)
             self.assertEqual(result.items, [])
 
@@ -282,7 +282,7 @@ class CollectorParserTests(unittest.TestCase):
             PaperSettings(), NetworkSettings(), clock=lambda: before_release
         )
         with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
-            result = collector.collect()
+            result = collector.collect(by_announcement=False)
         self.assertIn("not available yet", result.error)
         fetch.assert_not_called()
 
@@ -304,7 +304,7 @@ class CollectorParserTests(unittest.TestCase):
         with patch(
             "daily_radar.collectors.arxiv.fetch_response", return_value=response
         ):
-            result = collector.collect()
+            result = collector.collect(by_announcement=False)
         self.assertIn("search index may not be ready", result.error)
 
     def test_weekend_without_new_announcement_is_a_valid_empty_day(self):
@@ -313,7 +313,7 @@ class CollectorParserTests(unittest.TestCase):
             PaperSettings(), NetworkSettings(), clock=lambda: saturday
         )
         with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
-            result = collector.collect()
+            result = collector.collect(by_announcement=False)
         self.assertEqual(result.error, "")
         self.assertEqual(result.items, [])
         fetch.assert_not_called()
@@ -334,7 +334,7 @@ class CollectorParserTests(unittest.TestCase):
             with self.subTest(now=fixed):
                 collector = ArxivCollector(papers, NetworkSettings())
                 with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
-                    result = collector.collect(now=fixed)
+                    result = collector.collect(now=fixed, by_announcement=False)
                 self.assertEqual(result.error, "")
                 self.assertEqual(result.items, [])
                 self.assertEqual(
@@ -375,7 +375,7 @@ class CollectorParserTests(unittest.TestCase):
         with patch(
             "daily_radar.collectors.arxiv.fetch_response", return_value=response
         ) as fetch:
-            result = collector.collect(now=fixed)
+            result = collector.collect(now=fixed, by_announcement=False)
         self.assertEqual(result.error, "")
         self.assertEqual(len(result.items), 3)
         search = parse_qs(urlsplit(fetch.call_args.args[0]).query)["search_query"][0]
@@ -400,7 +400,7 @@ class CollectorParserTests(unittest.TestCase):
         ):
             with self.subTest(now=before_release):
                 with patch("daily_radar.collectors.arxiv.fetch_response") as fetch:
-                    result = collector.collect(now=before_release)
+                    result = collector.collect(now=before_release, by_announcement=False)
                 self.assertIn("not available yet", result.error)
                 fetch.assert_not_called()
 
@@ -452,7 +452,7 @@ class CollectorParserTests(unittest.TestCase):
             200, "application/atom+xml",
         )
         with patch("daily_radar.collectors.arxiv.fetch_response", return_value=response) as fetch:
-            result = collector.collect(now=fixed)
+            result = collector.collect(now=fixed, by_announcement=False)
         self.assertEqual(result.error, "")
         self.assertEqual(len(result.items), len(submissions))
         search = parse_qs(urlsplit(fetch.call_args.args[0]).query)["search_query"][0]

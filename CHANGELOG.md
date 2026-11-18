@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Deliver the previous Shanghai announcement day while keeping the news policy, window, 07:00 pre-screen and billing date unchanged.
+- Verify historical announcement membership using complete dated official recent lists, resolve cross-lists through primary categories and fetch exact v1 metadata; reject incomplete or unavailable batches.
+- Separate digest date, paper date and paper collection version in cache reuse and output selection; label the announcement date and distinguish closures, no new papers, no matches and collection failures.
+- Publish from 08:00 Shanghai in both seasons and cap automatic publish attempts at three using shared GitHub history guards in the workflow and Alibaba dispatcher.
+
 - Register the official November 11 and November 26, 2026 Eastern arXiv closures; include the complete Veterans Day and Thanksgiving submission backlogs in the November 13 and November 30 Shanghai digests, with regression coverage for closure days, winter release times, and news reuse.
 - Replace the paper scope with VLA/WAM representation research, significant embedding-model releases, and significant robot-manipulation benchmarks; retain the news policy.
 - Apply the new scope in both screening stages, validate category-specific gates and relevance dimensions, and add arXiv `cs.IR` and `cs.MM` coverage without keyword prefilters.

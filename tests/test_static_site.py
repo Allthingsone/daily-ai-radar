@@ -8,6 +8,7 @@ from pathlib import Path
 
 from daily_radar.config import load_settings
 from daily_radar.db import Database
+from daily_radar.time_windows import PAPER_COLLECTION_VERSION
 from daily_radar.eligibility import LLM_SCREENING_RULE_VERSION
 from daily_radar.paper_policy import PAPER_CATEGORY_LABELS, PAPER_HEADING
 from daily_radar.sample import build_demo_items
@@ -24,8 +25,8 @@ class StaticSiteTests(unittest.TestCase):
             now = datetime(2026, 11, 2, 2, 0, tzinfo=timezone.utc)
             papers = build_demo_items()[4:]
             for paper in papers:
-                paper.published_at = now
-                paper.metadata.update({"demo": False, "provenance": {"status": "verified-arxiv-api"}})
+                paper.published_at = now - timedelta(days=1)
+                paper.metadata.update({"paper_collection_version": PAPER_COLLECTION_VERSION, "demo": False, "provenance": {"status": "verified-arxiv-api"}})
                 database.upsert_item(paper)
             old = deepcopy(papers[0])
             old.canonical_url += "-old-policy"
@@ -70,6 +71,7 @@ class StaticSiteTests(unittest.TestCase):
 
             for item in (news, paper_today, paper_old, unverified):
                 item.metadata["demo"] = False
+                item.metadata["paper_collection_version"] = PAPER_COLLECTION_VERSION
             news.published_at = fixed_now - timedelta(hours=2)
             news.metadata["provenance"] = {
                 "status": "verified-primary",
@@ -82,7 +84,7 @@ class StaticSiteTests(unittest.TestCase):
                 "rule_version": LLM_SCREENING_RULE_VERSION,
                 "prompt_version": settings.llm.prompt_version,
             }
-            paper_today.published_at = fixed_now - timedelta(hours=1)
+            paper_today.published_at = fixed_now - timedelta(days=1, hours=1)
             paper_today.metadata["provenance"] = {
                 "status": "verified-primary",
                 "domain": "arxiv.org",
@@ -126,7 +128,7 @@ class StaticSiteTests(unittest.TestCase):
             self.assertIn(paper_today.title, html)
             self.assertIn(paper_old.title, html)
             self.assertIn("首次提交", html)
-            self.assertIn("当前版本</b> v1", html)
+            self.assertIn("筛选版本</b> v1", html)
             self.assertNotIn(unverified.title, html)
             self.assertIn('data-today="true"', html)
             self.assertIn('data-today="false"', html)

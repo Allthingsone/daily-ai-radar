@@ -5,7 +5,7 @@
 1. 聚合重大 AI 基座模型、重要工具/硬件、自动驾驶数据集与 Benchmark、重要且热议的科研成果，以及有可验证互动量的社区热议，并将同一事件的多个来源折叠到一起。
 2. 收集 VLA／WAM（世界动作模型）领域的各类表征研究、重要 embedding 模型发布论文／技术报告，以及机械臂领域的重要 benchmark 论文。
 
-当前版本是 **v0.8.2 阿里云间隔看门狗版**。程序负责来源真实性、时间窗口、社区互动量、去重和 arXiv 身份校验。新闻与论文严格复筛使用 `deepseek-v4-pro` 的 Thinking `max`；当天论文的全量初筛使用同一个 V4-Pro 的非思考模式降低 Token 消耗。关键词分数不再决定正式 Feed，模型也不能凭空声明某条内容“很热”。
+当前版本是 **v0.8.2 阿里云间隔看门狗版**。程序负责来源真实性、时间窗口、社区互动量、去重和 arXiv 身份校验。新闻与论文严格复筛使用 `deepseek-v4-pro` 的 Thinking `max`；目标公告批次的全量初筛使用同一个 V4-Pro 的非思考模式降低 Token 消耗。关键词分数不再决定正式 Feed，模型也不能凭空声明某条内容“很热”。
 
 ## v0.8.2 已包含
 
@@ -15,9 +15,9 @@
 - 新闻方向不限，但模型发布只收重大基座模型；数据集/Benchmark 只收自动驾驶；科研成果必须同时重要且具有采集器验证的社区热度。
 - 独立的“社区热议”类别，当前使用 Hacker News 积分/评论与掘金 AI 热榜的热度/浏览/点赞/评论/收藏；页面明确提示这些指标是讨论信号，不是一手事实证明。
 - 社区热度由结构化互动量和配置门槛确定，DeepSeek 只能解释这些信号，不能从标题语气或自身记忆猜测热度。
-- arXiv 查询不预先要求 VLA/WAM/embedding 关键词；当天所有已验证论文先由 V4-Pro 做高召回语义初筛，入围项再以完整摘要执行 Thinking `max` 严格复筛。
+- arXiv 查询不预先要求 VLA/WAM/embedding 关键词；目标公告批次的所有已验证论文先由 V4-Pro 做高召回语义初筛，入围项再以完整摘要执行 Thinking `max` 严格复筛。
 - 论文方向改为 VLA/WAM 表征研究、重要 embedding 模型发布和重要机械臂 benchmark 三条独立路径。自动驾驶或 VLN 不再单独构成入选依据，新闻筛选范围不变。
-- 分别保存 arXiv 首次发布时间、最后更新时间和版本号；每日入口只处理首次发布时间位于当天的论文，不把旧论文版本更新伪装成今日新论文。
+- 分别保存 arXiv 首次提交时间、公告时间和版本号；每天处理北京时间前一日的公告批次，按官方名单核验 ID 后读取初版摘要。
 - 固定使用 `deepseek-v4-pro`；新闻与论文严格复筛开启 Thinking `max`，论文高召回初筛关闭 Thinking，不自动降级到 Flash 或硬编码评分。
 - 新闻、论文初筛、论文复筛和系统 Prompt 独立存放在 `prompts/`，每条判断记录 Prompt 版本与 SHA-256。
 - 每次 API 调用记录输入、输出、推理、缓存 Token 与估算费用，并按新闻、论文初筛、论文复筛展示阶段用量；每日 50 万 Token / 1 美元双限额。
@@ -27,14 +27,14 @@
 - SQLite 历史库、收藏/已读/不相关反馈。
 - FastAPI Dashboard，以及 JSON、Markdown、RSS 导出。
 - 可直接发布的 GitHub Pages 静态站点，支持内容类型、精选范围、论文日期和全文搜索切换。
-- 阿里云函数计算 FC 每 10 分钟唤醒一次轻量看门狗；代码只在北京时间 07:00–10:30 执行状态检查，先预筛新闻，再按美东夏/冬令时等待 arXiv 当天公告并触发论文筛选、Pages 和邮件；目标是在北京时间 10:00 前完成。
+- 阿里云函数计算 FC 每 10 分钟唤醒一次轻量看门狗；代码只在北京时间 07:00–10:30 执行状态检查，07:00 起预筛新闻，08:00 起筛选前一日公告的论文并生成 Pages 和邮件；目标是在北京时间 10:00 前完成。
 - 发布阶段复用当天相同 Prompt 版本的已完成新闻状态；若邮件或 Pages 失败，后续重试也复用相同版本的新闻/论文结果，避免重复消耗 Token。修改筛选版本后不复用旧规则的成功记录。
 - GitHub Actions 自带的 08:10、08:30、08:50、09:10、09:30 定时继续作为独立兜底；首次完整成功后，其余触发按当日成功标记直接退出。
 - 逐条 URL 可达性检查、发布域名白名单和 arXiv ID 一致性校验。
 - 逐来源健康记录：Feed 原始 URL、最终 URL、HTTP 状态、条目数、耗时和错误。
 - 真实数据库与演示数据库物理隔离；正式导出只包含已验证结果。
 - 采集运行记录额外保存“当日查询、来源验证、初筛候选、初筛淘汰、严格复筛、最终入选”数量，出现 0 条时可以定位具体阶段。
-- 论文页默认严格显示北京时间当天，另提供“近 4 日”和“历史”视图，不用旧论文填充今日空缺。
+- 论文页默认显示北京时间前一日公告的本期论文，并明确标注公告日期；另提供“近 4 日”和“历史”视图。新闻日期和采集窗口保持原样。
 - 离线演示数据和单元测试。
 
 ## 5 分钟启动
@@ -98,7 +98,7 @@ flowchart LR
     B --> C[URL 去重与新闻事件聚类]
     C --> V[链接可达性 + 来源域名验证]
     V --> D[新闻 V4-Pro / Thinking max]
-    V --> T[当天论文 V4-Pro / 非思考高召回初筛]
+    V --> T[前一日公告论文 V4-Pro / 非思考高召回初筛]
     T --> F[候选完整摘要 / Thinking max 复筛]
     D --> E[严格新闻路线 + 社区热议判断]
     E --> H[精选结果]
@@ -120,7 +120,7 @@ DeepSeek 是正式 Feed 的唯一语义裁判。论文初筛只在能明确排�
 - [`config/sources.yaml`](config/sources.yaml)：新闻来源、采集适配器、来源等级和社区热度门槛。
 - [`docs/COMMUNITY_SOURCES.md`](docs/COMMUNITY_SOURCES.md)：社区来源能力、真实性边界及知乎/公众号未直接启用的原因。
 - [`prompts/news_screening.md`](prompts/news_screening.md)：新闻筛选 Prompt。
-- [`prompts/paper_triage.md`](prompts/paper_triage.md)：当天全量论文高召回初筛 Prompt。
+- [`prompts/paper_triage.md`](prompts/paper_triage.md)：目标公告批次全量论文高召回初筛 Prompt。
 - [`prompts/paper_screening.md`](prompts/paper_screening.md)：论文筛选 Prompt。
 - [`prompts/system.md`](prompts/system.md)：共同的安全与事实边界 Prompt。
 - [`prompts/README.md`](prompts/README.md)：后续修改、验证和升级 Prompt 的步骤。
@@ -177,11 +177,11 @@ python -m unittest discover -s tests -v
 
 ### 论文
 
-程序先根据 arXiv 美东时间 20:00 的[官方公告计划](https://info.arxiv.org/help/availability.html)计算当天公告对应的提交区间，再构造 `submittedDate` 查询；只限制配置中的高相关分类，不加入任何 VLA/WAM/embedding 关键词。分类包含机器人、视觉、语言、信息检索与多媒体检索，覆盖三条论文路径。随后使用 `start` 与 `max_results` 分页读取 `totalResults` 指定的全部结果，页间默认等待 3 秒。分页规则、GMT 日期格式与版本字段来自 [arXiv API User's Manual](https://info.arxiv.org/help/api/user-manual.html)。
+每天的日报日期记为 D，论文公告日期为 D−1（`papers.announcement_lag_days: 1`）。例如 11 月 18 日早上处理北京时间 11 月 17 日公告，即美东 11 月 16 日晚发布的批次。新闻的采集、筛选和时间窗口不变。程序根据 [arXiv 官方公告计划](https://info.arxiv.org/help/availability.html)区分停刊日，并在官方 `/recent` 列表中逐页定位目标日期；不会用作者提交时间推测实际公告归属。分类范围和三条语义筛选路径保持不变，也不添加关键词预筛。
 
-搜索 API 遇到 HTTP 429 时默认按 30 / 60 秒退避，并遵守服务端 `Retry-After`；超过单次等待上限的冷却要求会保留失败，交给后续定时任务重试。API 返回 HTTP 406、持续限流、超时、返回空结果或分页不完整时，默认启用 `papers.listing_fallback_enabled`，改读同一官方站点的分类新论文列表（如 [cs.AI/new](https://arxiv.org/list/cs.AI/new)）。406 不会反复重试同一已被拒绝的查询；401/403 及要求长时间冷却的响应仍停止采集。备用采集同样串行、请求间隔至少 3 秒，遇到 429 也遵守退避和 `Retry-After`，不使用第三方镜像。
+官方近期列表必须完整覆盖目标日期。每个分类的日期、页数、条目数量和 ID 都需一致；交叉收录还需在主分类的同日新增名单中确认，排除旧论文新交叉收录和修订。随后按确定的 ID 分批请求 API 的 `id_list`，指定 `v1` 获取初版完整摘要；每批最多 50 篇，论文元数据请求至少保留 60 秒超时，避免大批量历史查询超时。保留原始提交时间，不将它当成公告时间。[API 文档](https://info.arxiv.org/help/api/user-manual.html)。
 
-备用列表必须与当天预期公告日期一致，并完整读取所有配置分类和每一页。仅接受官方 `New submissions` 条目；交叉收录还需在其主分类的当日新投稿列表中确认 ID，排除旧论文新交叉收录和修订。日期不匹配、条目缺失或任一必要分类不可用时，整个论文阶段仍失败，不发布漏采日报。运行详情会记录采集方式、原 API 错误及核验过的列表 URL。
+所有 arXiv 请求串行且间隔至少 3 秒，429 继续遵守退避和 `Retry-After`。日期未出现且不能由完整历史列表确认、分页缺失、摘要缺失、网络故障和限流均保留为采集错误。正常停刊日不访问 arXiv、不调用论文模型；已确认没有新增或没有符合关注方向的论文也正常完成，邮件和网页说明原因，新闻照常发布。每个日报日期的自动发布最多尝试 3 次，GitHub 原生调度和阿里云调度共用失败记录；达到上限后停止自动尝试，可在排查后手动 `force`。
 
 每篇通过 arXiv 身份验证的新论文都会经历两个阶段：
 
@@ -203,7 +203,7 @@ VLA/WAM 路径不限表征类型：视觉、语言、动作 token、潜动作／
 
 每篇论文还必须满足：arXiv API 或已核验日期的官方新投稿列表返回的 ID 与 `arxiv.org/abs/{id}` 官方摘要页一致。页面直接显示 arXiv ID、摘要页、PDF 和可用的 DOI/代码链接。
 
-“今日论文”按公告批次转换后的 `Asia/Shanghai` 日期判断，而不是错误地要求作者首次提交时间也落在北京时间当天。API 路径同时保留官方首次提交时间、`updated` 与版本号；备用列表未提供的首次提交时刻和版本字段留空，不推测或伪造。两条路径都排除旧论文更新。SQLite 中已有且符合当前 Prompt 版本的旧结果仍可出现在“近 4 日”或“历史”视图；如果今天没有通过任一路径的论文，页面明确显示 0 条。
+网页和邮件使用“本期论文”，并显示明确的公告日期。缓存分别记录 `digest_date`、`paper_date` 和采集版本，避免复用旧日期规则的成功状态或旧名单记录；JSON 保留兼容键 `papers_today`，同时提供 `paper_date`、`paper_batch` 和包含上下界的时间窗口。费用始终按实际调用日计入，新闻 Prompt 和预算不变。历史补跑的 `--date` 仍指日报日期，论文使用其前一日公告；若目标批次已超出官方近期列表且没有保存的成功状态，任务明确失败，不伪造历史或发布空结果。
 
 arXiv 官方确认的停发日期通过 `papers.deferred_announcement_dates` 配置，日期使用美东时间。已加入 [2026 年 9 月 7 日停发公告](https://arxiv-org.atlassian.net/servicedesk/customer/portal/1/group/1/create/1)：北京时间 9 月 8 日正常发布新闻，论文记录为 `announcement_status=not_scheduled`；9 月 9 日的论文查询从美东 9 月 4 日 14:00 开始，覆盖节日期间积压的投稿。后续停发日期应依据官方公告维护；正常公告日 API 为空且备用列表无法完整核验时，仍报错并等待重试。
 
@@ -211,7 +211,7 @@ arXiv 官方确认的停发日期通过 `papers.deferred_announcement_dates` 配
 
 已补充[美东 2026 年 11 月 11 日停发公告](https://blog.arxiv.org/2026/11/06/announcement-change-veterans-day/)：北京时间 11 月 12 日无新公告，11 月 13 日 09:00 恢复批次覆盖美东 11 月 10 日 14:00 至 11 月 12 日 14:00 的两天投稿，避免漏掉节日期间积压论文。也已依据[官方日历](https://info.arxiv.org/help/availability.html#2026-holidays)登记 11 月 26 日停发；北京时间 11 月 30 日的恢复批次覆盖美东 11 月 25 日至 27 日的投稿区间。恢复日若官方数据仍未更新，日期与完整性检查仍会阻止发布旧数据。
 
-默认 50 万 Token / 1 美元预算用于降低高论文量日的 Token 上限失败概率。若当天分类论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 继续调整上限，页面会按阶段记录实际用量。
+默认 50 万 Token / 1 美元预算用于降低高论文量日的 Token 上限失败概率。若目标公告批次论文较多而预算不足，工作流会在发布与发信前失败，保留上一版 Pages；可通过 `DAILY_RADAR_LLM_DAILY_TOKEN_LIMIT` 和 `DAILY_RADAR_LLM_DAILY_COST_LIMIT_USD` 继续调整上限，页面会按阶段记录实际用量。
 
 ### “真实性”的技术边界
 

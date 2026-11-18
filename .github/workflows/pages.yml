@@ -1,5 +1,5 @@
 name: Daily radar and GitHub Pages
-run-name: Daily radar · ${{ inputs.phase || 'publish' }}${{ inputs.target_date && format(' · replay {0}', inputs.target_date) || '' }}
+run-name: Daily radar · previous-day papers · ${{ inputs.phase || 'publish' }}${{ inputs.target_date && format(' · replay {0}', inputs.target_date) || '' }}
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
           - publish
           - news
       force:
-        description: Run again even when today's digest was already delivered
+        description: Run again despite delivery success or the 3-attempt limit
         required: false
         default: false
         type: boolean
@@ -23,13 +23,13 @@ on:
         default: false
         type: boolean
       target_date:
-        description: Past Shanghai digest date YYYY-MM-DD (requires force and publish)
+        description: Past Shanghai digest date YYYY-MM-DD; papers use its previous day (force + publish)
         required: false
         default: ""
         type: string
   schedule:
-    # arXiv announces at 20:00 US Eastern: 08:00 Shanghai in daylight-saving
-    # time and 09:00 in standard time. These are native GitHub fallbacks;
+    # Papers use yesterday's Shanghai announcement date. These native fallbacks
+    # share a three-attempt daily limit with the external dispatcher;
     # Alibaba Function Compute supplies the punctual primary triggers.
     - cron: "10 8 * * *"
       timezone: "Asia/Shanghai"
@@ -44,6 +44,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: github-pages
@@ -104,27 +105,19 @@ jobs:
           path: .daily-success
           key: daily-radar-success-${{ runner.os }}-${{ steps.usage-date.outputs.digest_date }}
 
-      - name: Skip backup attempts after today's first success
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Skip delivered digests and exhausted paper retries
         id: daily-guard
         shell: bash
         env:
           FORCE_RUN: ${{ inputs.force }}
           SUCCESS_CACHE_HIT: ${{ steps.daily-success.outputs.cache-hit }}
-        run: |
-          if [ "$FORCE_RUN" = "true" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Manual force run requested; ignoring today's success marker."
-          elif [ "$SUCCESS_CACHE_HIT" = "true" ]; then
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "Today's digest was already delivered; this backup attempt is a no-op."
-          else
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "No successful delivery exists for today; continuing."
-          fi
-
-      - name: Check out repository
-        if: steps.daily-guard.outputs.should_run == 'true'
-        uses: actions/checkout@v7
+          PHASE: ${{ steps.execution-phase.outputs.value }}
+          DIGEST_DATE: ${{ steps.usage-date.outputs.digest_date }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/daily-guard.cjs
 
       - name: Set up Python
         if: steps.daily-guard.outputs.should_run == 'true'

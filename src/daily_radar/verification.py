@@ -179,7 +179,8 @@ def arxiv_api_verification(item: RadarItem, api_url: str) -> VerificationResult:
     )
     method = "arxiv-api-entry"
     reason = "arXiv API ID matches the canonical abstract URL"
-    if item.metadata.get("collection_method") == "arxiv-new-list":
+    if item.metadata.get("collection_method") in {"arxiv-new-list", "arxiv-recent-list"}:
+        listing_kind = "recent" if item.metadata["collection_method"] == "arxiv-recent-list" else "new"
         listing = urlsplit(str(item.metadata.get("announcement_listing_url", "")))
         expected_date = (
             (item.published_at.astimezone(ZoneInfo("America/New_York")).date() + timedelta(days=1)).isoformat()
@@ -187,9 +188,9 @@ def arxiv_api_verification(item: RadarItem, api_url: str) -> VerificationResult:
         )
         valid = bool(
             valid and source.scheme == "https" and source.netloc == "arxiv.org"
-            and re.fullmatch(r"/list/[A-Za-z0-9.-]+/new", source.path)
+            and re.fullmatch(r"/list/[A-Za-z0-9.-]+/" + listing_kind, source.path)
             and listing.scheme == "https" and listing.netloc == "arxiv.org"
-            and re.fullmatch(r"/list/[A-Za-z0-9.-]+/new", listing.path)
+            and re.fullmatch(r"/list/[A-Za-z0-9.-]+/" + listing_kind, listing.path)
             and item.metadata.get("arxiv_id") == expected
             and item.metadata.get("announcement_type") == "new"
             and expected_date and item.metadata.get("announcement_listing_date") == expected_date

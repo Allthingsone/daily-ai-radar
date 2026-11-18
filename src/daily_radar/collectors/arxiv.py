@@ -19,6 +19,7 @@ from ..processing.normalize import (
     unique_preserving_order,
 )
 from .arxiv_listing import ArxivListingCollector
+from .arxiv_recent import ArxivRecentCollector
 from .base import RetryDeferred, fetch_response, retry_after_seconds
 
 
@@ -167,7 +168,7 @@ class ArxivCollector:
         }
         return f"{ARXIV_API}?{urlencode(params)}"
 
-    def collect(self, now: Optional[datetime] = None) -> CollectionResult:
+    def collect(self, now: Optional[datetime] = None, *, by_announcement: bool = True) -> CollectionResult:
         started = time.monotonic()
         source_url = ""
         try:
@@ -201,8 +202,24 @@ class ArxivCollector:
             if current < announced_at:
                 source_url = ARXIV_API
                 raise RuntimeError(
-                    "today's arXiv announcement is not available yet"
+                    "the target arXiv announcement is not available yet"
                 )
+            if by_announcement:
+                source_url = "https://arxiv.org/list/" + self.papers.categories[0] + "/recent"
+                reader = ArxivRecentCollector(
+                    self.papers, self.network, self.timezone_name,
+                    fetcher=fetch_response, sleeper=self._sleep,
+                    parse_metadata=self.parse_page,
+                )
+                try:
+                    result = reader.collect(announced_at)
+                except Exception:
+                    source_url = reader.current_url or source_url
+                    raise
+                result.elapsed_ms = int((time.monotonic() - started) * 1000)
+                return result
+            # Legacy submission-window queries remain an explicit diagnostic
+            # option. Production collection uses dated announcement membership.
             source_url = self.build_url(
                 start=0,
                 published_since=published_since,
@@ -332,14 +349,15 @@ class ArxivCollector:
             )
         except Exception as exc:
             error = f"{exc.__class__.__name__}: {exc}"
-            details = {}
+            details = {"announcement_status": "unavailable"}
             # A backup source is eligible only after a scheduled API query.
             # Before-release, holiday, configuration and long-cooldown errors
             # must never be converted into an apparently successful batch.
             # The API also returns 406 in production: do not retry the same
             # rejected query, but allow the dated official list to verify it.
             fallback_allowed = (
-                self.papers.listing_fallback_enabled
+                not by_announcement
+                and self.papers.listing_fallback_enabled
                 and source_url.startswith(ARXIV_API + "?")
                 and not isinstance(exc, RetryDeferred)
                 and (not isinstance(exc, HTTPError) or exc.code in {406, 408, 429, 500, 502, 503, 504})

@@ -20,6 +20,9 @@
   const recentPeriodLabel =
     periodButtons.find((button) => button.dataset.paperPeriod === "recent")
       ?.dataset.periodCopy || "近期";
+  const currentPeriodLabel =
+    periodButtons.find((button) => button.dataset.paperPeriod === "today")
+      ?.dataset.periodCopy || "本期";
 
   function emptyCopy(panel, visibleCount) {
     const empty = panel.querySelector("[data-filter-empty]");
@@ -32,8 +35,8 @@
       title.textContent = `没有匹配“${state.query}”的结果`;
       copy.textContent = "尝试更短的关键词，或清除搜索条件。";
     } else if (state.kind === "paper" && state.paperPeriod === "today") {
-      title.textContent = `${panel.dataset.localDate || "今天"} 暂无符合 VLA/WAM 表征、重要 Embedding 模型或机械臂 Benchmark 范围的新论文`;
-      copy.textContent = `系统不会用旧论文填充今日结果；可切换到${recentPeriodLabel}查看回补候选。`;
+      title.textContent = `${currentPeriodLabel} · 当前无论文结果`;
+      copy.textContent = panel.dataset.emptyMessage || "该公告批次尚未完成采集。";
     } else if (state.view === "important") {
       title.textContent = "当前范围暂无精选结果";
       copy.textContent = "可切换到“全部”；系统不会用低分或未验证条目补足数量。";
@@ -87,7 +90,7 @@
       const periodLabel = panel.querySelector("[data-period-label]");
       if (periodLabel) {
         periodLabel.textContent =
-          state.paperPeriod === "today" ? "今日" : recentPeriodLabel;
+          state.paperPeriod === "today" ? currentPeriodLabel : recentPeriodLabel;
       }
       emptyCopy(panel, visibleCount);
     });

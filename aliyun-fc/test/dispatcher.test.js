@@ -4,7 +4,6 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
-  expectedArxivReleaseMinute,
   handleTimer,
   mayStartPublish,
   parseTimerEvent,
@@ -56,39 +55,38 @@ test("Shanghai date conversion is independent of the UTC calendar day", () => {
   assert.equal(shanghaiDate(new Date("2026-09-02T23:15:00Z")), "2026-09-03");
 });
 
-test("arXiv readiness follows US daylight-saving time", () => {
+test("previous-day papers publish at 08:00 regardless of US daylight saving", () => {
   const summerBefore = new Date("2026-09-02T23:59:00Z");
   const summerReady = new Date("2026-09-03T00:05:00Z");
   const winterBefore = new Date("2026-12-03T00:50:00Z");
   const winterReady = new Date("2026-12-03T01:05:00Z");
 
-  assert.equal(expectedArxivReleaseMinute(summerReady), 8 * 60);
   assert.equal(mayStartPublish(summerBefore), false);
   assert.equal(mayStartPublish(summerReady), true);
-  assert.equal(expectedArxivReleaseMinute(winterReady), 9 * 60);
-  assert.equal(mayStartPublish(winterBefore), false);
+  assert.equal(mayStartPublish(winterBefore), true);
   assert.equal(mayStartPublish(winterReady), true);
 });
 
-test("automatic interval phase uses Shanghai time and the arXiv boundary", () => {
+test("automatic phase keeps the 07:00 news phase and starts publish at 08:00", () => {
   assert.equal(resolveAutomaticPhase(new Date("2026-09-02T22:59:00Z")), null);
   assert.equal(resolveAutomaticPhase(new Date("2026-09-02T23:05:00Z")), "news");
   assert.equal(resolveAutomaticPhase(new Date("2026-09-02T23:59:00Z")), "news");
   assert.equal(resolveAutomaticPhase(new Date("2026-09-03T00:00:00Z")), "publish");
-  assert.equal(resolveAutomaticPhase(new Date("2026-12-03T00:50:00Z")), "news");
+  assert.equal(resolveAutomaticPhase(new Date("2026-12-03T00:50:00Z")), "publish");
   assert.equal(resolveAutomaticPhase(new Date("2026-12-03T01:00:00Z")), "publish");
   assert.equal(resolveAutomaticPhase(new Date("2026-09-03T02:31:00Z")), null);
 });
 
-test("weekends can publish a truthful news-only digest at the first check", () => {
-  assert.equal(mayStartPublish(new Date("2026-09-04T23:05:00Z")), true);
+test("Saturday still has Friday papers and follows the same delivery window", () => {
+  assert.equal(mayStartPublish(new Date("2026-09-04T23:05:00Z")), false);
+  assert.equal(mayStartPublish(new Date("2026-09-05T00:05:00Z")), true);
 });
 
-test("watchdog makes no network call before the winter arXiv boundary", async () => {
+test("watchdog makes no network call before the publish window", async () => {
   let called = false;
   const result = await handleTimer(
     {
-      triggerTime: "2026-12-03T00:50:00Z",
+      triggerTime: "2026-12-02T23:50:00Z",
       payload: '{"phase":"publish"}',
     },
     ENV,
@@ -97,7 +95,7 @@ test("watchdog makes no network call before the winter arXiv boundary", async ()
     },
   );
 
-  assert.equal(result.reason, "arxiv-not-ready");
+  assert.equal(result.reason, "before-publish-window");
   assert.equal(called, false);
 });
 

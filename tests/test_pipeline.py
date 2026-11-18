@@ -3,13 +3,15 @@ import unittest
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from daily_radar.config import LLMSettings, load_settings
 from daily_radar.db import Database
 from daily_radar.eligibility import LLM_SCREENING_RULE_VERSION
 from daily_radar.models import CollectionResult, RadarItem, RunSummary
 from daily_radar.pipeline import RadarPipeline
+from daily_radar.time_windows import PAPER_COLLECTION_VERSION, paper_reference
+from zoneinfo import ZoneInfo
 
 
 def paper(identifier, title):
@@ -44,6 +46,8 @@ class FakeArxivCollector:
         return now - timedelta(days=1), now + timedelta(days=1)
 
     def collect(self, now=None):
+        for item in self.items:
+            item.published_at = now - timedelta(hours=12)
         return CollectionResult(
             source_id="arxiv",
             source_name="arXiv",
@@ -106,7 +110,7 @@ class FakeTwoStageScreener:
 
 class PipelinePaperTests(unittest.TestCase):
     def test_verified_listing_fallback_reaches_the_same_two_stage_screening(self):
-        fixed = datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc)
+        fixed = datetime(2026, 9, 15, 2, 0, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")
             settings = replace(load_settings(), database_path=database.path)
@@ -195,7 +199,9 @@ class PipelinePaperTests(unittest.TestCase):
             )
             database.record_run(
                 RunSummary("paper", now, now, 100, 2, 2, 1, 0,
-                           details={"prompt_version": settings.llm.prompt_version})
+                           details={"prompt_version": settings.llm.prompt_version,
+                                    "paper_date": paper_reference(now, settings.timezone).astimezone(ZoneInfo(settings.timezone)).date().isoformat(),
+                                    "paper_collection_version": PAPER_COLLECTION_VERSION})
             )
 
             with patch.object(
@@ -234,6 +240,8 @@ class PipelinePaperTests(unittest.TestCase):
 
     def test_publish_on_confirmed_arxiv_closure_reuses_news_and_records_success(self):
         for fixed in (
+            datetime(2026, 11, 14, 2, 0, tzinfo=timezone.utc),
+            datetime(2026, 11, 15, 2, 0, tzinfo=timezone.utc),
             datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc),
             datetime(2026, 10, 13, 7, 0, tzinfo=timezone.utc),
             datetime(2026, 11, 12, 7, 0, tzinfo=timezone.utc),
@@ -243,11 +251,12 @@ class PipelinePaperTests(unittest.TestCase):
                 self._assert_closure_publish_reuses_news(fixed)
 
     def _assert_closure_publish_reuses_news(self, fixed):
+        fixed += timedelta(days=1)  # Deliver the confirmed closure on the following day.
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "radar.db")
             settings = replace(load_settings(), database_path=database.path)
             pipeline = RadarPipeline(settings, database)
-            pipeline.screener = FakeTwoStageScreener()
+            pipeline.screener = Mock()
             database.record_run(
                 RunSummary("news", fixed, fixed, 25, 4, 4, 5, 0,
                            details={"prompt_version": settings.llm.prompt_version})
@@ -271,6 +280,8 @@ class PipelinePaperTests(unittest.TestCase):
             self.assertEqual(database.stats()["papers"], 0)
             collect_news.assert_not_called()
             fetch.assert_not_called()
+            pipeline.screener.ensure_ready.assert_not_called()
+            pipeline.screener.screen_papers_two_stage.assert_not_called()
 
 
 if __name__ == "__main__":

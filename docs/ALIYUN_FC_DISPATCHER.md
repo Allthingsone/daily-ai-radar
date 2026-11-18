@@ -3,6 +3,8 @@
 GitHub Actions 的 `schedule` 可能延迟，因此本项目使用阿里云函数计算 FC 3.0 作为外部闹钟。FC 只读取当天状态并调用 GitHub `workflow_dispatch`；采集、DeepSeek 筛选、邮件和 Pages 仍全部在 GitHub Actions 中完成。
 
 这是**事件函数 + 定时触发器**，不需要 HTTP 触发器、自定义域名或公开 URL，也不存在 `workers.dev` 子域名注册步骤。电脑和手机均可关机。
+本次修改需要同时更新仓库工作流与 FC 中的 `aliyun-fc/index.js`；只修改本地文件不会更新已部署的定时函数。
+
 
 ## 实际时间表
 
@@ -12,9 +14,9 @@ GitHub Actions 的 `schedule` 可能延迟，因此本项目使用阿里云函�
 | --- | --- | --- | --- |
 | `daily-radar-watchdog` | 每 10 分钟 | `{"phase":"auto"}` | 由代码按北京时间自动选择新闻、发布或立即跳过 |
 
-北京时间 07:00–10:30 之外，函数会在访问 Pages 或 GitHub 前立即返回 `outside-window`。窗口内，调度器会动态读取 `America/New_York` 的夏令时状态：arXiv 公告边界前选择 `news`，边界后选择 `publish`。工作日只有达到 arXiv 当天公告时间后才允许发布；周末没有新公告，会在公告边界后的第一次检查生成真实的新闻日报。
+北京时间 07:00–10:30 之外立即返回 `outside-window`，不访问网络。07:00–07:59 选择 `news`，08:00 起选择 `publish`，不受美东夏令时影响。论文使用前一日的北京时间公告，周六仍处理周五论文；停刊日及空筛选结果由采集器明确记录，新闻流程保持原样。
 
-每次有效检查还会读取 Pages 日期、GitHub 中已成功的同阶段任务和正在运行的任务，以避免重复消耗 DeepSeek Token 或重复发信。一天会唤醒函数 144 次，但绝大多数调用只做本地时间判断并立即结束。
+每次有效检查读取 Pages 日期、同阶段成功记录和运行中的工作流；当天发布失败达到 3 次后返回 `attempt-limit`。GitHub 原生定时工作流也执行同一限制，因此 FC 和原生备份不会相互绕过。成功或达到上限后不重复调用 DeepSeek、不重复发信。
 
 GitHub 自带的 08:10、08:30、08:50、09:10、09:30 五个定时仍保留作独立兜底。
 
@@ -35,6 +37,21 @@ npm run package
 ```
 
 生成的 `daily-ai-radar-fc.zip` 已被 Git 忽略。代码没有第三方运行时依赖，ZIP 根目录中会直接包含 `index.js`。
+
+## 更新已有函数
+
+1. 登录[函数计算控制台](https://fcnext.console.aliyun.com/)，切换到原来部署的地域，打开 `daily-ai-radar-dispatcher`。
+2. 进入 **代码 → 上传代码 → 上传 ZIP 包**，选择本机 `aliyun-fc/daily-ai-radar-fc.zip`，点击 **保存并部署**；若上传后仍显示待部署，再点击 **部署代码**。
+3. 继续使用原有环境变量、`index.handler` 处理程序及每 10 分钟的 `daily-radar-watchdog` 触发器，触发消息为 `{"phase":"auto"}`。本次无需更换 GitHub Token。
+4. 部署完成后，代码中应包含 `PUBLISH_START_MINUTE = 8 * 60` 和 `MAX_PUBLISH_ATTEMPTS = 3`。可用以下事件测试读取状态；`dry_run` 不会触发采集或发送邮件。
+
+```json
+{
+  "payload": "{\"phase\":\"publish\",\"dry_run\":true}"
+}
+```
+
+返回 `dry-run-would-dispatch`、`already-published`、`phase-complete`、`workflow-active` 或 `attempt-limit` 均表示状态检查已执行；08:00 前返回 `before-publish-window` 正常。代码上传及部署入口参见[官方事件函数文档](https://help.aliyun.com/zh/functioncompute/creating-an-event-function)。
 
 ## 在控制台创建事件函数
 
@@ -89,6 +106,8 @@ HTTP_TIMEOUT_MS=15000
 - `dry-run-would-dispatch`：连接、Token 和查重逻辑均正常，正式触发时会启动工作流；
 - `already-published`：Pages 已是该北京时间日期；
 - `phase-complete`：GitHub 中该阶段当天已经成功；
+- `attempt-limit`：当天发布已失败 3 次，停止自动尝试；排查后可在 GitHub 手动勾选 `force`；
+- `before-publish-window`：尚未到北京时间 08:00 的发布窗口；
 - `workflow-active`：工作流正在运行。
 
 如果出现 `HTTP 401/403`，先检查 Token 是否仍有效、是否只授权了正确仓库，以及 `Actions: Read and write` 是否保存成功。如果连接超时，确认公网访问已开启，并考虑切换到中国香港地域。
@@ -109,7 +128,7 @@ HTTP_TIMEOUT_MS=15000
 
 在非投递窗口看到 `outside-window` 是正常结果。正式端到端测试时，可以给手动测试事件设置一个 07:00–10:30 内的 `triggerTime` 并保留 `dry_run=true`；预期返回 `dry-run-would-dispatch`、`already-published`、`phase-complete` 或 `workflow-active`，不会产生 DeepSeek 用量或邮件。
 
-日志只会记录 `dispatch`、`already-published`、`phase-complete`、`workflow-active`、`arxiv-not-ready`、`outside-window` 或 `dry-run-would-dispatch` 以及请求 ID，不会打印 Token。
+日志只会记录 `dispatch`、`already-published`、`phase-complete`、`workflow-active`、`before-publish-window`、`attempt-limit`、`outside-window` 或 `dry-run-would-dispatch` 以及请求 ID，不会打印 Token。
 
 ## Cloudflare 迁移收尾
 

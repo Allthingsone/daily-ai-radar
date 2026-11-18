@@ -16,7 +16,7 @@ from daily_radar.models import CollectionResult, RunSummary
 from daily_radar.pipeline import RadarPipeline
 from daily_radar.sample import build_demo_items
 from daily_radar.static_site import build_static_site
-from daily_radar.time_windows import digest_end, digest_reference
+from daily_radar.time_windows import PAPER_COLLECTION_VERSION, digest_end, digest_reference, paper_reference
 from tests.test_pipeline import FakeTwoStageScreener
 
 
@@ -45,8 +45,9 @@ class ReplayTests(unittest.TestCase):
         result = []
         for item in (news, paper):
             item.metadata["demo"] = False
+            item.metadata["paper_collection_version"] = PAPER_COLLECTION_VERSION
             item.metadata["provenance"] = {"status": "verified-primary"}
-            item.published_at = datetime(2026, 9, 25, 2, tzinfo=timezone.utc)
+            item.published_at = datetime(2026, 9, 24 if item.kind == "paper" else 25, 2, tzinfo=timezone.utc)
             item.is_important = True
             self.database.upsert_item(item)
             result.append(item)
@@ -67,7 +68,7 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(data["digest_date"], self.target)
         self.assertEqual(data["generated_at"], self.now.isoformat())
         self.assertEqual(data["llm_usage"]["local_date"], "2026-09-26")
-        self.assertEqual(data["windows"]["papers_today"]["local_date"], self.target)
+        self.assertEqual(data["windows"]["papers_today"]["local_date"], "2026-09-24")
         self.assertEqual([item["title"] for item in data["papers_today"]], [paper.title])
         self.assertNotIn("Do not include Sep 26", (output / "index.html").read_text())
         self.assertIn("日报补跑", (output / "index.html").read_text())
@@ -118,7 +119,7 @@ class ReplayTests(unittest.TestCase):
             collector.daily_window.return_value = (reference - timedelta(days=1), reference)
             collector.collect.return_value = CollectionResult(source_id="arxiv", items=[], domain_match=True)
             summary = pipeline.collect_papers(self.target)
-        collector.collect.assert_called_once_with(now=reference)
+        collector.collect.assert_called_once_with(now=paper_reference(reference, "Asia/Shanghai"))
         self.assertEqual(summary.started_at, self.now)
         self.assertEqual(summary.details["digest_date"], self.target)
 
@@ -130,7 +131,7 @@ class ReplayTests(unittest.TestCase):
             details={"prompt_version": self.settings.llm.prompt_version},
         ))
         summary = RunSummary("paper", self.now, self.now, 10, 1, 1, 1, 0,
-                             details={"prompt_version": self.settings.llm.prompt_version, "digest_date": self.target})
+                             details={"prompt_version": self.settings.llm.prompt_version, "digest_date": self.target, "paper_date": "2026-09-24", "paper_collection_version": PAPER_COLLECTION_VERSION})
         with patch.object(pipeline, "collect_papers", return_value=summary) as collect, patch.object(pipeline, "collect_news") as news:
             self.assertEqual(pipeline.collect("publish", self.target), [summary])
             collect.assert_called_once_with(self.target)

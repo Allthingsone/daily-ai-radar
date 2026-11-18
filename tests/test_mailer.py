@@ -1,11 +1,12 @@
 import tempfile
 import unittest
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from daily_radar.config import load_settings
 from daily_radar.db import Database
+from daily_radar.time_windows import PAPER_COLLECTION_VERSION
 from daily_radar.mailer import send_daily_email
 from daily_radar.sample import build_demo_items
 
@@ -43,8 +44,9 @@ class MailerTests(unittest.TestCase):
             news, paper = build_demo_items()[0], build_demo_items()[4]
             for item in (news, paper):
                 item.metadata["demo"] = False
+                item.metadata["paper_collection_version"] = PAPER_COLLECTION_VERSION
                 item.metadata["provenance"] = {"status": "verified-primary"}
-                item.published_at = now
+                item.published_at = now - timedelta(days=1) if item.kind == "paper" else now
                 item.is_important = True
                 database.upsert_item(item)
 

@@ -17,7 +17,7 @@ from .db import Database
 from .llm import DeepSeekScreener
 from .models import CollectionResult, RadarItem, RunSummary
 from .processing.dedup import cluster_news, deduplicate_exact
-from .time_windows import digest_reference
+from .time_windows import PAPER_COLLECTION_VERSION, digest_reference, paper_reference
 from .verification import arxiv_api_verification, verify_news_items
 
 
@@ -34,12 +34,18 @@ class RadarPipeline:
         local_now = now.astimezone(ZoneInfo(self.settings.timezone))
         local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         local_end = local_start + timedelta(days=1)
+        batch_date = ""
+        if kind == "paper":
+            batch_time = paper_reference(now, self.settings.timezone, self.settings.papers.announcement_lag_days)
+            batch_date = batch_time.astimezone(ZoneInfo(self.settings.timezone)).date().isoformat()
         return self.database.has_successful_run(
             kind,
             local_start.astimezone(timezone.utc),
             local_end.astimezone(timezone.utc),
             prompt_version=self.settings.llm.prompt_version,
             digest_date=local_now.date().isoformat(),
+            paper_date=batch_date,
+            paper_collection_version=PAPER_COLLECTION_VERSION if kind == "paper" else "",
         )
 
     def _news_collector(self, source: SourceConfig):
@@ -147,9 +153,9 @@ class RadarPipeline:
         return summary
 
     def collect_papers(self, target_date: str = "") -> RunSummary:
-        self.screener.ensure_ready()
         started = datetime.now(timezone.utc)
-        content_time = digest_reference(target_date, self.settings.timezone, started)
+        digest_time = digest_reference(target_date, self.settings.timezone, started)
+        content_time = paper_reference(digest_time, self.settings.timezone, self.settings.papers.announcement_lag_days)
         collector = ArxivCollector(
             self.settings.papers,
             self.settings.network,
@@ -185,12 +191,20 @@ class RadarPipeline:
             item.metadata["source_record_url"] = item.canonical_url
             if not provenance.usable:
                 continue
+            item.metadata["paper_collection_version"] = PAPER_COLLECTION_VERSION
             verified.append(item)
+        if not result.error and len(verified) != len(deduplicate_exact(result.items)):
+            result.error = "arXiv batch contains unverified records or records outside the target announcement day"
+            errors.append(f"arxiv: {result.error}")
         # Every verified new paper reaches a compact, high-recall V4-Pro
         # triage.  Only plausible candidates consume full-abstract Thinking-max
         # screening; budget exhaustion aborts rather than publishing a partial
         # daily set.
-        screened = self.screener.screen_papers_two_stage(verified)
+        if verified and not result.error:
+            self.screener.ensure_ready()
+            screened = self.screener.screen_papers_two_stage(verified)
+        else:
+            screened = []
         accepted = [
             item for item in screened
             if bool(item.metadata.get("llm_screening", {}).get("selected"))
@@ -227,7 +241,13 @@ class RadarPipeline:
             details={
                 **result.details,
                 "prompt_version": self.settings.llm.prompt_version,
-                "digest_date": local_today.isoformat(),
+                "digest_date": digest_time.astimezone(ZoneInfo(self.settings.timezone)).date().isoformat(),
+                "paper_date": local_today.isoformat(),
+                "paper_collection_version": PAPER_COLLECTION_VERSION,
+                "paper_status": ("unavailable" if result.error else
+                                 "not_scheduled" if result.details.get("announcement_status") == "not_scheduled" else
+                                 "no_new_submissions" if not verified else
+                                 "no_matches" if not accepted else "available"),
                 "daily_query_items": len(result.items),
                 "verified_new_submissions": len(verified),
                 "triage_candidates": sum(
@@ -268,17 +288,13 @@ class RadarPipeline:
         if kind == "paper":
             return [self.collect_papers()]
         if kind == "all":
-            # Paper readiness is checked first because arXiv's 20:00 Eastern
-            # announcement becomes available at 08:00 or 09:00 in Shanghai.
-            # A too-early backup trigger should fail before spending any news
-            # screening tokens; the next scheduled attempt can then retry.
+            # Confirm the previous announcement batch before spending news tokens.
             paper = self.collect_papers()
             if paper.sources_failed:
                 return [paper]
             return [paper, self.collect_news()]
         if kind == "publish":
-            # The externally scheduled news phase normally finishes before
-            # arXiv's 08:00/09:00 Shanghai announcement. Reuse its same-day
+            # The externally scheduled news phase finishes first. Reuse its same-day
             # database state so the final phase only has to screen papers.
             # Successful paper state is reusable too when email or Pages
             # deployment failed after collection and a watchdog retries.

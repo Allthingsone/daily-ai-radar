@@ -15,7 +15,7 @@ from .db import Database
 from .exporter import export_markdown, export_rss
 from .paper_policy import PAPER_DIMENSION_LABELS
 from .processing.scoring import news_category_label, paper_category_label
-from .time_windows import PeriodWindow, build_period_window, digest_end, digest_reference, news_snapshot_reference
+from .time_windows import PAPER_COLLECTION_VERSION, PeriodWindow, build_period_window, digest_end, digest_reference, news_snapshot_reference, paper_batch_info
 
 
 WEB_ROOT = Path(__file__).resolve().parent / "web"
@@ -180,6 +180,7 @@ def _window_payload(window: PeriodWindow) -> Dict[str, Optional[str]]:
             window.published_since.isoformat() if window.published_since else None
         ),
         "local_date": window.local_date,
+        "published_before": window.published_before.isoformat() if window.published_before else None,
     }
 
 
@@ -193,9 +194,8 @@ def build_static_site(
 ) -> List[Path]:
     """Build a self-contained, read-only GitHub Pages snapshot.
 
-    Only verified and feed-eligible records are published. Papers from previous
-    days remain available under the explicit recent view and never fill today's
-    section.
+    The digest and news retain their date; papers use the configured earlier
+    announcement day. Other batches remain in the explicit recent view.
     """
 
     current = _as_utc(now)
@@ -214,11 +214,14 @@ def build_static_site(
         "news", "recent", settings.timezone, settings.news.lookback_hours, news_time
     )
     paper_today_window = build_period_window(
-        "paper", "today", settings.timezone, settings.papers.lookback_hours, content_time
+        "paper", "today", settings.timezone, settings.papers.lookback_hours, content_time,
+        paper_lag_days=settings.papers.announcement_lag_days,
     )
     paper_recent_window = build_period_window(
-        "paper", "recent", settings.timezone, settings.papers.lookback_hours, content_time
+        "paper", "recent", settings.timezone, settings.papers.lookback_hours, content_time,
+        paper_lag_days=settings.papers.announcement_lag_days,
     )
+    paper_batch = paper_batch_info(database, content_time, settings)
 
     news = database.list_items(
         kind="news",
@@ -234,7 +237,8 @@ def build_static_site(
         limit=500,
         verified_only=True,
         published_since=paper_today_window.published_since,
-        published_before=published_before,
+        published_before=paper_today_window.published_before,
+        paper_collection_version=PAPER_COLLECTION_VERSION,
         eligible_only=True,
         prompt_version=settings.llm.prompt_version,
     )
@@ -243,7 +247,7 @@ def build_static_site(
         limit=500,
         verified_only=True,
         published_since=paper_recent_window.published_since,
-        published_before=published_before,
+        published_before=paper_recent_window.published_before,
         eligible_only=True,
         prompt_version=settings.llm.prompt_version,
     )
@@ -329,6 +333,7 @@ def build_static_site(
         news_window=news_window,
         paper_today_window=paper_today_window,
         paper_recent_window=paper_recent_window,
+        paper_batch=paper_batch,
         verification_labels=VERIFICATION_LABELS,
         component_labels=COMPONENT_LABELS,
         llm_usage=llm_usage,
@@ -347,6 +352,8 @@ def build_static_site(
         "version": __version__,
         "generated_at": current.isoformat(),
         "digest_date": content_time.astimezone(ZoneInfo(settings.timezone)).date().isoformat(),
+        "paper_date": paper_today_window.local_date,
+        "paper_batch": paper_batch,
         "timezone": settings.timezone,
         "site_url": site_url,
         "windows": {

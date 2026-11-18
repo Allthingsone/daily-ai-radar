@@ -206,7 +206,7 @@ class ArxivListingTests(unittest.TestCase):
 
             collector = ArxivCollector(PaperSettings(categories=["cs.AI"]), NetworkSettings(), sleeper=waits.append)
             with self.subTest(failure=failure), patch("daily_radar.collectors.arxiv.fetch_response", fetch):
-                result = collector.collect(AFTER_RELEASE)
+                result = collector.collect(AFTER_RELEASE, by_announcement=False)
             self.assertEqual(result.error, "")
             self.assertEqual(len(result.items), 1)
             self.assertEqual(result.details["collection_method"], "arxiv-new-list")
@@ -237,7 +237,7 @@ class ArxivListingTests(unittest.TestCase):
         waits = []
         collector = ArxivCollector(PaperSettings(categories=["cs.AI"]), NetworkSettings(), sleeper=waits.append)
         with patch("daily_radar.collectors.base.build_http_opener", return_value=opener):
-            result = collector.collect(AFTER_RELEASE)
+            result = collector.collect(AFTER_RELEASE, by_announcement=False)
         self.assertEqual(result.error, "")
         self.assertEqual(len(result.items), 1)
         self.assertEqual(waits, [6, 3, 45])
@@ -258,7 +258,7 @@ class ArxivListingTests(unittest.TestCase):
         waits = []
         collector = ArxivCollector(PaperSettings(categories=["cs.AI"]), NetworkSettings(), sleeper=waits.append)
         with patch("daily_radar.collectors.base.build_http_opener", return_value=opener):
-            result = collector.collect(AFTER_RELEASE)
+            result = collector.collect(AFTER_RELEASE, by_announcement=False)
         self.assertEqual(result.items, [])
         self.assertIn("HTTP Error 406", result.error)
         self.assertIn("HTTP Error 429", result.error)
@@ -280,7 +280,7 @@ class ArxivListingTests(unittest.TestCase):
         collector = ArxivCollector(PaperSettings(categories=["cs.AI", "cs.CV"]),
                                    NetworkSettings(), sleeper=lambda _: None)
         with patch("daily_radar.collectors.arxiv.fetch_response", fetch):
-            result = collector.collect(AFTER_RELEASE)
+            result = collector.collect(AFTER_RELEASE, by_announcement=False)
         self.assertEqual(len(calls), 3)
         self.assertEqual(result.items, [])
         self.assertEqual(result.http_status, 429)
@@ -296,7 +296,7 @@ class ArxivListingTests(unittest.TestCase):
             collector = ArxivCollector(PaperSettings(categories=["cs.AI"]), NetworkSettings(), sleeper=lambda _: None)
             with patch("daily_radar.collectors.arxiv.fetch_response",
                        side_effect=HTTPError("https://export.arxiv.org/api/query", code, "busy", headers, BytesIO())) as fetch:
-                result = collector.collect(AFTER_RELEASE)
+                result = collector.collect(AFTER_RELEASE, by_announcement=False)
             self.assertTrue(result.error)
             self.assertEqual(result.items, [])
             self.assertEqual(fetch.call_count, 1)

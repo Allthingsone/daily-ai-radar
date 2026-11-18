@@ -22,6 +22,7 @@ def export_json(
     items: List[Dict[str, Any]],
     path: Path,
     scope: Optional[Dict[str, Optional[datetime]]] = None,
+    published_before: Optional[Dict[str, Optional[datetime]]] = None,
 ) -> None:
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -32,6 +33,11 @@ def export_json(
         payload["published_since"] = {
             kind: cutoff.isoformat() if cutoff is not None else None
             for kind, cutoff in scope.items()
+        }
+    if published_before is not None:
+        payload["published_before"] = {
+            kind: cutoff.isoformat() if cutoff is not None else None
+            for kind, cutoff in published_before.items()
         }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -144,6 +150,8 @@ def export_all(
     output_dir: Path,
     published_since_by_kind: Optional[Dict[str, Optional[datetime]]] = None,
     prompt_version: str = "",
+    published_before_by_kind: Optional[Dict[str, Optional[datetime]]] = None,
+    paper_collection_version: str = "",
 ) -> List[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if published_since_by_kind is None:
@@ -162,6 +170,8 @@ def export_all(
                     limit=500,
                     verified_only=True,
                     published_since=published_since_by_kind.get(kind),
+                    published_before=(published_before_by_kind or {}).get(kind),
+                    paper_collection_version=paper_collection_version if kind == "paper" else "",
                     eligible_only=True,
                     prompt_version=prompt_version,
                 )
@@ -172,7 +182,7 @@ def export_all(
         output_dir / "daily.md",
         output_dir / "feed.xml",
     ]
-    export_json(items, paths[0], published_since_by_kind)
+    export_json(items, paths[0], published_since_by_kind, published_before_by_kind)
     export_markdown(items, paths[1])
     export_rss(items, paths[2])
     return paths

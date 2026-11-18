@@ -12,13 +12,16 @@ news:
   cluster_similarity: 0.72
 
 papers:
-  # 抓取北京时间当天对应的最新 arXiv 公告批次。page_size 只控制单次 API
-  # 请求大小；采集器会遵守 arXiv 建议的间隔并自动翻页到结果末尾。
+  # Digest day D uses the previous Shanghai announcement day; news is unchanged.
+  announcement_lag_days: 1
+  # 按前一日官方公告名单完整分页，再按 ID 获取初版摘要。
+  # page_size 只控制单次元数据请求大小，不限制批次论文总数。
   lookback_hours: 96
   page_size: 200
   page_delay_seconds: 3.0
-  # 429 按 30/60 秒退避；搜索接口不可用时核验官方当日新论文列表。
+  # 429 按 30/60 秒退避；不把接口错误或未完成分页当成无论文。
   rate_limit_backoff_seconds: 30.0
+  # 仅用于显式启用的旧提交窗口诊断路径；日常采集使用历史公告名单。
   listing_fallback_enabled: true
   max_important: 20
   # 官方确认停发的美东公告日期；不把所有美国节假日都当成停发日。
@@ -73,7 +76,7 @@ llm:
   max_output_tokens: 32768
   news_batch_size: 8
   paper_batch_size: 6
-  # 当天论文先全部由同一个 V4-Pro 做非思考、高召回初筛，只传标题和摘要
+  # 目标公告批次论文先全部由同一个 V4-Pro 做非思考、高召回初筛，只传标题和摘要
   # 开头以控制 Token；入围项再用下面的 Thinking max 完整 Prompt 严格复筛。
   paper_triage_batch_size: 80
   paper_triage_abstract_chars: 480

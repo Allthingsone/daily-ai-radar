@@ -47,6 +47,7 @@ class NewsSettings:
 @dataclass(frozen=True)
 class PaperSettings:
     lookback_hours: int = 96
+    announcement_lag_days: int = 1
     # arXiv's max_results is a page size, not a safe total-result limit.  The
     # collector keeps paging until every result in the announcement query is read.
     page_size: int = 200
@@ -71,6 +72,10 @@ class PaperSettings:
             "stat.ML",
         ]
     )
+
+    def __post_init__(self) -> None:
+        if type(self.announcement_lag_days) is not int or not 0 <= self.announcement_lag_days <= 2:
+            raise ValueError("papers.announcement_lag_days must be 0, 1 or 2")
 
 
 @dataclass(frozen=True)

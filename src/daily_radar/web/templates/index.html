@@ -11,7 +11,7 @@
   </div>
   <div class="hero-copy">
     <p class="eyebrow">INTELLIGENCE, NOT NOISE</p>
-    <h1>每天真正面世的 AI 新模型与新成果，<br><em>以及严格相关的驾驶论文。</em></h1>
+    <h1>每天真正面世的 AI 新模型与新成果，<br><em>以及前一日公告的领域论文。</em></h1>
     <p class="hero-description">
       新闻中，模型只收重大基座大模型/多模态模型，数据集与 Benchmark 只收自动驾驶，科研成果须同时重要且有可验证热度；另收录高价值社区讨论。论文关注 VLA/WAM 中的各类表征研究、重要 Embedding 模型发布，以及机械臂领域的重要 Benchmark。
       每个结果都保留原始链接、身份验证方式、分项得分和入选证据。
@@ -52,7 +52,7 @@
         <a class="{{ 'active' if view == 'all' else '' }}" href="/?kind={{ kind }}&view=all&period={{ period }}">全部</a>
       </div>
       <div class="view-toggle period-toggle" aria-label="发布时间范围">
-        <a class="{{ 'active' if period == 'today' else '' }}" href="/?kind={{ kind }}&view={{ view }}&period=today">今日</a>
+        <a class="{{ 'active' if period == 'today' else '' }}" href="/?kind={{ kind }}&view={{ view }}&period=today">{{ '本期' if kind == 'paper' else '今日' }}</a>
         <a class="{{ 'active' if period == 'recent' else '' }}" href="/?kind={{ kind }}&view={{ view }}&period=recent">{{ recent_period_label }}</a>
         <a class="{{ 'active' if period == 'all' else '' }}" href="/?kind={{ kind }}&view={{ view }}&period=all">历史</a>
       </div>
@@ -141,7 +141,7 @@
           {% if item.authors %}<span><b>作者</b> {{ item.authors[:4]|join(' · ') }}{% if item.authors|length > 4 %} et al.{% endif %}</span>{% endif %}
           {% if item.categories %}<span><b>分类</b> {{ item.categories|join(' / ') }}</span>{% endif %}
           {% if item.metadata.arxiv_first_submitted_at %}<span><b>首次提交</b> {{ item.metadata.arxiv_first_submitted_at|localtime }}</span>{% endif %}
-          {% if item.metadata.arxiv_version_number %}<span><b>当前版本</b> v{{ item.metadata.arxiv_version_number }}</span>{% endif %}
+          {% if item.metadata.arxiv_version_number %}<span><b>筛选版本</b> v{{ item.metadata.arxiv_version_number }}</span>{% endif %}
           {% if item.metadata.code_url %}<a href="{{ item.metadata.code_url }}" target="_blank" rel="noopener">↗ Code</a>{% endif %}
           {% if item.metadata.pdf_url %}<a href="{{ item.metadata.pdf_url }}" target="_blank" rel="noopener">↗ PDF</a>{% endif %}
         </div>
@@ -188,8 +188,8 @@
     <div class="empty-state">
       <div class="empty-radar"><i></i></div>
       {% if kind == 'paper' and period == 'today' %}
-      <h3>{{ local_date }} 暂无符合条件的新论文</h3>
-      <p>系统不会用旧论文填充“今日”结果。可查看 {{ recent_period_label }}候选，或等待下一次 arXiv 更新。</p>
+      <h3>{{ period_label }} · 当前无论文结果</h3>
+      <p>{{ paper_batch.message }}</p>
       <a class="empty-action" href="/?kind=paper&view={{ view }}&period=recent">查看{{ recent_period_label }}论文</a>
       {% else %}
       <h3>这个时间范围还没有结果</h3>

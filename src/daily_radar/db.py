@@ -332,10 +332,13 @@ class Database:
         *,
         prompt_version: str = "",
         digest_date: str = "",
+        paper_date: str = "",
+        paper_collection_version: str = "",
     ) -> bool:
         return self.successful_run_started_at(
             kind, started_since, started_before,
             prompt_version=prompt_version, digest_date=digest_date,
+            paper_date=paper_date, paper_collection_version=paper_collection_version,
         ) is not None
 
     def successful_run_started_at(
@@ -346,6 +349,8 @@ class Database:
         *,
         prompt_version: str = "",
         digest_date: str = "",
+        paper_date: str = "",
+        paper_collection_version: str = "",
     ) -> Optional[datetime]:
         """Return the latest usable run's actual start time for this digest.
 
@@ -372,6 +377,8 @@ class Database:
                     OR (? != '' AND json_extract(details_json, '$.digest_date') = ?)
                   )
                   AND sources_ok > 0
+                  AND (? = '' OR (sources_failed = 0 AND json_extract(details_json, '$.paper_date') = ?))
+                  AND (? = '' OR json_extract(details_json, '$.paper_collection_version') = ?)
                   AND (? = '' OR json_extract(details_json, '$.prompt_version') = ?)
                 ORDER BY started_at DESC
                 LIMIT 1
@@ -383,11 +390,29 @@ class Database:
                     digest_date,
                     digest_date,
                     digest_date,
+                    paper_date,
+                    paper_date,
+                    paper_collection_version,
+                    paper_collection_version,
                     prompt_version,
                     prompt_version,
                 ),
             ).fetchone()
         return datetime.fromisoformat(row["started_at"]) if row else None
+
+    def paper_batch_status(self, digest_date: str, paper_date: str, prompt_version: str,
+                           paper_collection_version: str) -> str:
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT details_json FROM runs WHERE kind = 'paper'
+                   AND json_extract(details_json, '$.digest_date') = ?
+                   AND json_extract(details_json, '$.paper_date') = ?
+                   AND json_extract(details_json, '$.prompt_version') = ?
+                   AND json_extract(details_json, '$.paper_collection_version') = ?
+                   ORDER BY id DESC LIMIT 1""",
+                (digest_date, paper_date, prompt_version, paper_collection_version),
+            ).fetchone()
+        return json.loads(row["details_json"]).get("paper_status", "unavailable") if row else "unavailable"
 
     def record_source_checks(
         self, run_id: int, results: List[CollectionResult]
@@ -592,6 +617,7 @@ class Database:
         eligible_only: bool = False,
         prompt_version: str = "",
         published_before: Optional[datetime] = None,
+        paper_collection_version: str = "",
     ) -> List[Dict[str, Any]]:
         clauses: List[str] = []
         params: List[Any] = []
@@ -618,6 +644,9 @@ class Database:
         if published_before is not None:
             clauses.append("published_at < ?")
             params.append(_iso(published_before))
+        if paper_collection_version:
+            clauses.append("json_extract(metadata_json, '$.paper_collection_version') = ?")
+            params.append(paper_collection_version)
         if eligible_only:
             clauses.append(
                 "(COALESCE(json_extract(metadata_json, '$.llm_screening.selected'), 0) = 1 "
@@ -652,6 +681,8 @@ class Database:
         published_since: Optional[datetime] = None,
         eligible_only: bool = False,
         prompt_version: str = "",
+        paper_published_before: Optional[datetime] = None,
+        paper_collection_version: str = "",
     ) -> Dict[str, int]:
         clauses: List[str] = []
         params: List[Any] = []
@@ -674,6 +705,12 @@ class Database:
                     "json_extract(metadata_json, '$.llm_screening.prompt_version') = ?"
                 )
                 params.append(prompt_version)
+        if paper_published_before is not None:
+            clauses.append("(kind != 'paper' OR published_at < ?)")
+            params.append(_iso(paper_published_before))
+        if paper_collection_version:
+            clauses.append("(kind != 'paper' OR json_extract(metadata_json, '$.paper_collection_version') = ?)")
+            params.append(paper_collection_version)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self.connect() as connection:
             row = connection.execute(

@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from .config import Settings
 from .db import Database
 from .paper_policy import PAPER_HEADING
-from .time_windows import build_period_window, digest_end, digest_reference, news_snapshot_reference
+from .time_windows import PAPER_COLLECTION_VERSION, build_period_window, digest_end, digest_reference, news_snapshot_reference, paper_batch_info
 
 
 class EmailConfigurationError(RuntimeError):
@@ -32,7 +32,8 @@ def _selected_items(
     database: Database, settings: Settings, now: datetime
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     paper_window = build_period_window(
-        "paper", "today", settings.timezone, settings.papers.lookback_hours, now
+        "paper", "today", settings.timezone, settings.papers.lookback_hours, now,
+        paper_lag_days=settings.papers.announcement_lag_days,
     )
     published_before = digest_end(now, settings.timezone)
     news = database.list_items(
@@ -51,7 +52,8 @@ def _selected_items(
         verified_only=True,
         eligible_only=True,
         published_since=paper_window.published_since,
-        published_before=published_before,
+        published_before=paper_window.published_before,
+        paper_collection_version=PAPER_COLLECTION_VERSION,
         limit=500,
         prompt_version=settings.llm.prompt_version,
     )
@@ -65,10 +67,10 @@ def _selected_items(
     )
 
 
-def _text_section(title: str, items: List[Dict[str, Any]]) -> List[str]:
+def _text_section(title: str, items: List[Dict[str, Any]], empty_text: str = "暂无符合条件的新内容。") -> List[str]:
     lines = [title]
     if not items:
-        return lines + ["暂无符合条件的新内容。", ""]
+        return lines + [empty_text, ""]
     for index, item in enumerate(items, 1):
         summary = item.get("metadata", {}).get("summary_zh") or item.get("summary", "")
         lines.extend(
@@ -82,9 +84,9 @@ def _text_section(title: str, items: List[Dict[str, Any]]) -> List[str]:
     return lines
 
 
-def _html_section(title: str, items: List[Dict[str, Any]]) -> str:
+def _html_section(title: str, items: List[Dict[str, Any]], empty_text: str = "暂无符合条件的新内容。") -> str:
     if not items:
-        body = '<p style="color:#78849a">暂无符合条件的新内容。</p>'
+        body = f'<p style="color:#78849a">{html.escape(empty_text)}</p>'
     else:
         cards: List[str] = []
         for item in items:
@@ -131,6 +133,8 @@ def build_daily_message(
     )
     selection_time = news_snapshot_reference(database, reference, settings.timezone, settings.llm.prompt_version) if target_date else reference
     news, papers = _selected_items(database, settings, selection_time)
+    paper_batch = paper_batch_info(database, reference, settings)
+    paper_title = f"{PAPER_HEADING}（公告日期：{paper_batch['date']}）"
     usage = database.llm_usage_summary(usage_date)
     subject = f"Daily AI Radar｜{local:%Y-%m-%d}｜新闻 {len(news)} · 论文 {len(papers)}"
     if target_date:
@@ -143,7 +147,7 @@ def build_daily_message(
         "",
     ]
     text_lines.extend(_text_section("AI 新发布与技术成果", news))
-    text_lines.extend(_text_section("今日" + PAPER_HEADING, papers))
+    text_lines.extend(_text_section(paper_title, papers, paper_batch["message"]))
     text_lines.append(
         f"{usage_date} DeepSeek 用量：{usage['total_tokens']} / {settings.llm.daily_token_limit} Token，"
         f"估算 ${usage['estimated_cost_usd']:.4f} / ${settings.llm.daily_cost_limit_usd:.2f}。"
@@ -163,7 +167,7 @@ def build_daily_message(
         f'<small>DAILY AI RADAR</small><h1 style="margin:8px 0">{local:%Y-%m-%d} AI 情报</h1>'
         '<p style="margin:0;color:#cbd5e1">来源硬校验 · V4-Pro 两阶段论文筛选 · 最终 Thinking max</p></header>'
         + _html_section("AI 新发布与技术成果", news)
-        + _html_section("今日" + PAPER_HEADING, papers)
+        + _html_section(paper_title, papers, paper_batch["message"])
         + '<aside style="padding:14px;background:#f2f4f7;border-radius:8px;color:#475467">'
         f'{usage_date} DeepSeek 用量：<b>{usage["total_tokens"]}</b> / {settings.llm.daily_token_limit} Token；'
         f'估算 <b>${usage["estimated_cost_usd"]:.4f}</b> / ${settings.llm.daily_cost_limit_usd:.2f}。'
@@ -185,6 +189,8 @@ def build_daily_message(
         "news": len(news),
         "papers": len(papers),
         "digest_date": local.date().isoformat(),
+        "paper_date": paper_batch["date"],
+        "paper_batch": paper_batch,
         "usage_date": usage_date,
         "llm_usage": usage,
     }

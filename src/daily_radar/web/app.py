@@ -15,7 +15,7 @@ from ..config import load_settings
 from ..db import Database
 from ..paper_policy import PAPER_DIMENSION_LABELS
 from ..processing.scoring import news_category_label, paper_category_label
-from ..time_windows import PeriodWindow, build_period_window
+from ..time_windows import PAPER_COLLECTION_VERSION, PeriodWindow, build_period_window, paper_batch_info
 
 
 WEB_ROOT = Path(__file__).resolve().parent
@@ -107,6 +107,7 @@ def create_app(config_path: str = "") -> FastAPI:
             period,
             settings.timezone,
             lookback_hours,
+            paper_lag_days=settings.papers.announcement_lag_days,
         )
 
     def category_label(item: Dict[str, Any]) -> str:
@@ -149,6 +150,8 @@ def create_app(config_path: str = "") -> FastAPI:
             limit=200,
             verified_only=not demo_mode,
             published_since=window.published_since,
+            published_before=window.published_before if kind == "paper" else None,
+            paper_collection_version=PAPER_COLLECTION_VERSION if kind == "paper" and window.period == "today" and not demo_mode else "",
             eligible_only=not demo_mode,
             prompt_version=settings.llm.prompt_version if not demo_mode else "",
         )
@@ -157,6 +160,8 @@ def create_app(config_path: str = "") -> FastAPI:
             limit=500,
             verified_only=not demo_mode,
             published_since=window.published_since,
+            published_before=window.published_before if kind == "paper" else None,
+            paper_collection_version=PAPER_COLLECTION_VERSION if kind == "paper" and window.period == "today" and not demo_mode else "",
             eligible_only=not demo_mode,
             prompt_version=settings.llm.prompt_version if not demo_mode else "",
         )
@@ -173,12 +178,15 @@ def create_app(config_path: str = "") -> FastAPI:
                 "period_label": window.label,
                 "recent_period_label": recent_window.label,
                 "local_date": window.local_date,
+                "paper_batch": paper_batch_info(database, datetime.now(timezone), settings),
                 "category": category,
                 "query": q,
                 "categories": categories,
                 "stats": database.stats(
                     verified_only=not demo_mode,
                     published_since=window.published_since,
+                    paper_published_before=window.published_before if kind == "paper" else None,
+                    paper_collection_version=PAPER_COLLECTION_VERSION if kind == "paper" and window.period == "today" and not demo_mode else "",
                     eligible_only=not demo_mode,
                     prompt_version=(
                         settings.llm.prompt_version if not demo_mode else ""
@@ -214,6 +222,8 @@ def create_app(config_path: str = "") -> FastAPI:
             limit,
             verified_only=verified and not demo_mode,
             published_since=window.published_since,
+            published_before=window.published_before if kind == "paper" else None,
+            paper_collection_version=PAPER_COLLECTION_VERSION if kind == "paper" and window.period == "today" and not demo_mode else "",
             eligible_only=verified and not demo_mode,
             prompt_version=(
                 settings.llm.prompt_version if verified and not demo_mode else ""

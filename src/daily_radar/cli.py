@@ -24,7 +24,7 @@ from .pipeline import RadarPipeline
 from .mailer import EmailConfigurationError, send_daily_email
 from .sample import seed_demo
 from .static_site import build_static_site
-from .time_windows import build_period_window
+from .time_windows import PAPER_COLLECTION_VERSION, build_period_window
 from .usage_snapshot import restore_usage_snapshot
 from .verification import audit_database
 
@@ -45,7 +45,7 @@ def _parser() -> argparse.ArgumentParser:
     collect.add_argument(
         "--kind", choices=("news", "paper", "all", "publish"), default="all"
     )
-    collect.add_argument("--date", default="", help="补跑的内容日期 YYYY-MM-DD；费用仍按实际调用日计入")
+    collect.add_argument("--date", default="", help="补跑的日报日期 YYYY-MM-DD；论文取前一日公告，费用按实际调用日计入")
 
     seed = subparsers.add_parser("seed-demo", help="写入隔离的离线演示数据库")
     seed.add_argument(
@@ -222,6 +222,7 @@ def main(argv: Iterable[str] = None) -> int:
             args.paper_period,
             settings.timezone,
             settings.papers.lookback_hours,
+            paper_lag_days=settings.papers.announcement_lag_days,
         )
         paths = export_all(
             database,
@@ -231,6 +232,8 @@ def main(argv: Iterable[str] = None) -> int:
                 "paper": paper_window.published_since,
             },
             prompt_version=settings.llm.prompt_version,
+            published_before_by_kind={"paper": paper_window.published_before},
+            paper_collection_version=PAPER_COLLECTION_VERSION if paper_window.period == "today" else "",
         )
         print(
             f"Export scope: news={news_window.label}, paper={paper_window.label}"
