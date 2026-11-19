@@ -250,6 +250,61 @@ class DeepSeekScreenerTests(unittest.TestCase):
         )
         self.assertFalse(rejected["selected"])
 
+    def test_domestic_publishers_and_zhihu_use_the_existing_news_gates(self):
+        # Run actual screened decisions on domestic-source candidates: source
+        # reputation cannot bypass the category gates or fabricate article heat.
+        cases = [
+            ("量子位", "media", "model-release", {"is_major_foundation_model": True}, False, True),
+            ("量子位", "media", "model-release", {}, False, False),
+            ("新智元", "media", "dataset-benchmark", {}, False, False),
+            ("新智元", "media", "research-result", {
+                "is_important_research_result": True, "has_verifiable_heat_signal": True,
+            }, False, False),
+            ("知乎", "community", "model-release", {"is_major_foundation_model": True}, True, False),
+            ("知乎", "community", "community-trending", {
+                "is_community_trending": True, "has_verifiable_heat_signal": True,
+            }, True, True),
+            ("知乎", "community", "community-trending", {
+                "is_community_trending": True, "has_verifiable_heat_signal": True,
+            }, False, False),
+        ]
+        items, decisions = [], []
+        for index, (name, source_type, category, flags, heat, selected) in enumerate(cases):
+            item = make_item()
+            item.source_name, item.source_type = name, source_type
+            item.source_tier = 3 if source_type == "community" else 2
+            item.url = item.canonical_url = f"https://example.com/domestic/{index}"
+            if source_type == "community":
+                item.metadata["community_signals"] = [{
+                    "platform": "知乎", "points": 120 if heat else 1,
+                    "comments": 0, "qualified": heat,
+                }]
+            items.append(item)
+            decisions.append(news_decision(category, id=f"n001-{index:03d}", **flags))
+
+        captured = []
+        def opener(request, timeout):
+            captured.append(json.loads(request.data))
+            return FakeResponse({
+                "choices": [{"finish_reason": "stop", "message": {
+                    "content": json.dumps({"items": decisions}),
+                }}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 100, "total_tokens": 200},
+            })
+
+        with tempfile.TemporaryDirectory() as directory:
+            database = Database(Path(directory) / "test.db")
+            database.initialize()
+            screener = DeepSeekScreener(llm_settings(), database, "Asia/Shanghai", opener=opener)
+            screened = screener.screen(items, "news")
+        self.assertEqual([i.metadata["llm_screening"]["selected"] for i in screened],
+                         [case[-1] for case in cases])
+        self.assertEqual(len(captured), 1)
+        prompt = captured[0]["messages"][1]["content"]
+        for name in ("量子位", "新智元", "知乎"):
+            self.assertIn(name, prompt)
+        self.assertIn("仅限自动驾驶", prompt)
+
     def test_rejects_model_evidence_not_present_in_source_text(self):
         with self.assertRaises(LLMResponseError):
             DeepSeekScreener._validate_evidence(

@@ -18,6 +18,7 @@
    - `DEEPSEEK_API_KEY`：DeepSeek 开放平台生成的 API Key。
    - `DAILY_RADAR_EMAIL_USERNAME`：163 邮箱地址。
    - `DAILY_RADAR_EMAIL_AUTH_CODE`：163 邮箱客户端授权码，不是网页登录密码。
+   - 可选 `ZHIHU_ACCESS_SECRET`：知乎数据开放平台的 Access Secret，用于国内 AI 讨论采集；不配置只跳过知乎。量子位、新智元官网文章不需要额外密钥。具体来源与筛选边界见 [`COMMUNITY_SOURCES.md`](COMMUNITY_SOURCES.md)。
 
 收件地址默认就是 `DAILY_RADAR_EMAIL_USERNAME`，无需再提供第二个邮箱。当前工作流把邮件发送视为每日交付的一部分；若两个邮件 Secret 缺失或 SMTP 发送失败，本次任务不会写入成功标记，后续备用触发会继续重试，并保留上一版成功页面。
 

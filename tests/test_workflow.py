@@ -62,6 +62,8 @@ class WorkflowScheduleTests(unittest.TestCase):
         self.assertEqual(news_step["run"], "daily-radar collect --kind news")
         self.assertIn("daily-radar collect --kind publish", publish_step["run"])
         self.assertIn("daily-radar collect --kind all", publish_step["run"])
+        for step in (news_step, publish_step):
+            self.assertEqual(step["env"]["ZHIHU_ACCESS_SECRET"], "${{ secrets.ZHIHU_ACCESS_SECRET }}")
         self.assertIn("phase == 'publish'", jobs["deploy"]["if"])
 
     def test_extra_budget_is_opt_in_and_scoped_to_one_forced_manual_run(self):
