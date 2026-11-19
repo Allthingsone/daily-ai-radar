@@ -3,8 +3,8 @@
 ## Unreleased
 
 - Add QbitAI and AI Era public website articles from their WordPress APIs, preserving the existing news scope, 48-hour window and semantic gates; publisher popularity never becomes article heat.
-- Add optional official Zhihu AI search with author attribution, original creation dates, votes and comments, bounded requests and credential-safe redirects; missing credentials skip only this source without retries.
-- Pass the optional Zhihu secret to both news collection paths and document the curated domestic publisher list and source access limits.
+- Remove the optional Zhihu collector and secret configuration at the user's request; retain QbitAI, AI Era and Juejin without adding a news-data subscription.
+- Document the curated domestic publisher list and source access limits.
 
 - Deliver the previous Shanghai announcement day while keeping the news policy, window, 07:00 pre-screen and billing date unchanged.
 - Verify historical announcement membership using complete dated official recent lists, resolve cross-lists through primary categories and fetch exact v1 metadata; reject incomplete or unavailable batches.

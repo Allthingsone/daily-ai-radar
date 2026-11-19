@@ -118,7 +118,7 @@ DeepSeek 是正式 Feed 的唯一语义裁判。论文初筛只在能明确排�
 
 - [`config/settings.yaml`](config/settings.yaml)：时间窗口、arXiv 分类、DeepSeek、预算、Prompt 路径和 SMTP 主机设置。
 - [`config/sources.yaml`](config/sources.yaml)：新闻来源、采集适配器、来源等级和社区热度门槛。
-- [`docs/COMMUNITY_SOURCES.md`](docs/COMMUNITY_SOURCES.md)：社区来源能力、真实性边界及知乎/公众号未直接启用的原因。
+- [`docs/COMMUNITY_SOURCES.md`](docs/COMMUNITY_SOURCES.md)：国内媒体与社区来源、真实性边界及接入限制。
 - [`prompts/news_screening.md`](prompts/news_screening.md)：新闻筛选 Prompt。
 - [`prompts/paper_triage.md`](prompts/paper_triage.md)：目标公告批次全量论文高召回初筛 Prompt。
 - [`prompts/paper_screening.md`](prompts/paper_screening.md)：论文筛选 Prompt。
@@ -173,7 +173,7 @@ python -m unittest discover -s tests -v
 
 小型任务模型和例行模型更新、非自动驾驶数据集/Benchmark、没有合格热度信号的科研成果，以及观点评论、教程、旧闻、传闻、融资并购、司法监管和 Sponsored/付费软文不进入新闻 Feed。最终语义判断来自 DeepSeek；`has_verifiable_heat_signal` 会由程序再次与采集器指标核对，模型无法伪造。社区原帖只能作为 `community-trending` 入选，不能直接充当模型、产品或科研成果正式发布的一手证明。
 
-新闻来源覆盖国内外：保留海外官方公告、媒体与 Hacker News、掘金，新增头部 AI 公众号同名媒体**量子位、新智元**的官网公开文章；配置 `ZHIHU_ACCESS_SECRET` 后可采集**知乎 AI 讨论**。所有国内候选沿用上面的方向和入选门槛，不因公众号知名而自动入选，不用账号粉丝量代替文章热度。媒体读原始发布时间，知乎读创建时间，继续使用 48 小时窗口。来源规模依据、访问限制和密钥配置见 [`docs/COMMUNITY_SOURCES.md`](docs/COMMUNITY_SOURCES.md)。
+新闻来源覆盖国内外：保留海外官方公告、媒体与 Hacker News、掘金，新增头部 AI 公众号同名媒体**量子位、新智元**的官网公开文章。所有国内候选沿用上面的方向和入选门槛，不因公众号知名而自动入选，不用账号粉丝量代替文章热度。媒体读原始发布时间，继续使用 48 小时窗口。国内来源无需额外的新闻数据服务订阅或密钥；知乎按用户选择不接入。来源规模依据和访问限制见 [`docs/COMMUNITY_SOURCES.md`](docs/COMMUNITY_SOURCES.md)。
 
 同一事件合并时，页面优先展示等级更高的一手来源，并只在“同一事件”区域保留通过验证的其他报道链接。
 

@@ -17,7 +17,7 @@
 | Hacker News | 已启用 | Y Combinator 官方 Firebase API 的 `topstories` 与 `item` | 当前 Top 30，且 100 points 或 30 评论至少满足一项 | 海外技术社区讨论信号；外链仍需单独验证 |
 | 掘金 | 已启用 | 掘金网页使用的人工智能分类热榜 HTTPS 接口，并访问原文公开 Schema.org 元数据 | 当前 Top 20，且 `hot_rank` 300 或 10 评论至少满足一项；同时保存浏览/点赞/收藏 | 国内技术社区讨论信号；原文日期来自 `BlogPosting.datePublished`，绝不以采集时间冒充 |
 | CSDN | 适配器已实现、默认停用 | CSDN 公开热榜页使用的 `hot-rank` HTTPS 接口 | 热榜分数、浏览、评论、收藏 | 原文页当前对 CI 类自动化请求返回 HTTP 521，无法稳定取得 `article:published_time`；在恢复可靠日期核验前不进入默认工作流 |
-| 知乎 | 已实现；配置密钥后采集 | [官方搜索 API](https://developer.zhihu.com/docs?key=zhihu_search) 的 AI 查询，读取 `CreateTime`、作者和原链接 | 100 赞同或 30 评论至少满足一项；搜索名次不当作热榜排名 | 社区讨论信号，只能进入 `community-trending`；未配置密钥时明确记录跳过，不发送请求 |
+| 知乎 | 不接入 | 按用户选择移除采集器及密钥配置 | 不采集 | 国内来源保留量子位、新智元和掘金，无需新增知乎接口授权或额度 |
 | 机器之心 | 暂未启用 | 本次官网和 RSS 请求均转到数据服务介绍页，未返回可用文章列表 | 不推测 | 不将 HTTP 200 的介绍页当成成功采集；取得可用官方接入后再增加 |
 | 其他公众号 | 未启用 | 不采集任意公众号或使用来源不明的公共聚合器 | 不推测 | 后续按关注规模、AI 专业性与来源可用性逐个核验 |
 | Reddit | 未启用 | 官方 Data API 要求注册与 OAuth；匿名 RSS 在当前网络验证中连接不稳定 | Score / comments 或 Hot rank | 提供合规 Reddit 应用凭据后再接入，不让默认工作流依赖不稳定匿名访问 |
@@ -41,17 +41,11 @@ community_min_comments: 30
 
 `community_min_points` 与 `community_min_comments` 采用“至少一项达标”，同时必须位于 `community_rank_limit` 以内。修改门槛不需要新增 API Key；修改 Prompt 时仍须递增 `config/settings.yaml` 的 `prompt_version`。
 
-知乎没有榜单名次，`community_rank_limit` 保持为 0，只按实际赞同/评论达标。新增来源没有修改新闻或论文 Prompt、规则版本和预算。
+新增来源没有修改新闻或论文 Prompt、规则版本和预算。
 
-## 知乎接入
+## 国内媒体采集
 
-1. 登录[知乎数据开放平台](https://developer.zhihu.com/)，在个人中心创建 Access Secret。接口权限、额度与价格以平台账户页面为准，程序不会代为开户或购买额度。
-2. 在本仓库 `Settings → Secrets and variables → Actions → Secrets` 添加 `ZHIHU_ACCESS_SECRET`。工作流已将它传给早间新闻采集和发布阶段的新闻补采；阿里云函数不需要保存这个密钥，也无需修改触发器。
-3. 本机运行时将同名变量放入进程环境。不要把密钥提交到配置文件或写入聊天。
-
-默认检索「人工智能、大模型、AI Agent、具身智能、自动驾驶」，单次采集最多 5 个请求、每个最多 10 条，再进入统一语义筛选。这些查询只用于发现候选，不改变入选方向。请求使用 Bearer 和秒级时间戳鉴权，禁止携带凭据跟随重定向。缺失密钥、鉴权失败或限流不会循环重试；已经取得的有效讨论可以保留，其他新闻来源继续工作。
-
-官方 `hot_list` 不返回发布时间，无法满足项目的新闻时间核验。因此改用 `zhihu_search` 的 `CreateTime`，而不是以抓取时间或可能代表修改时间的 `EditTime` 冒充发布时间。返回缺少创建时间的条目会被丢弃；旧帖即使刚被修改，也不会进入最近 48 小时窗口。
+量子位、新智元及掘金采用公开来源，无需新增新闻数据服务订阅、社区账号或密钥。移除知乎后，不会向其接口发送请求，也不会再产生缺少知乎密钥的来源健康提示。阿里云触发器无需调整。
 
 两家媒体使用官网公开的 [WordPress Posts 接口](https://developer.wordpress.org/rest-api/reference/posts/)，单次最多读取各 40 篇公开文章，供现有时间窗筛选。媒体原文发布时间来自 UTC `date_gmt`，不使用修改日期。读取正文而非 RSS 短摘要，避免只有夸张标题而没有事实依据；解析失败或跳转到介绍页会明确记录为来源不可用，不误报为「今日无更新」。
 

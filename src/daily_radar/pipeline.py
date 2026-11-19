@@ -12,7 +12,6 @@ from .collectors import (
     JuejinHotCollector,
     RSSCollector,
     WordPressCollector,
-    ZhihuSearchCollector,
 )
 from .config import Settings, SourceConfig, load_sources
 from .db import Database
@@ -59,8 +58,6 @@ class RadarPipeline:
             return JuejinHotCollector(source, self.settings.network)
         if source.adapter == "wordpress":
             return WordPressCollector(source, self.settings.network)
-        if source.adapter == "zhihu-search":
-            return ZhihuSearchCollector(source, self.settings.network, self.settings.news.lookback_hours)
         if source.adapter != "rss":
             raise ValueError(f"Unsupported source adapter: {source.adapter}")
         return RSSCollector(source, self.settings.network)
@@ -85,7 +82,7 @@ class RadarPipeline:
         # the source unhealthy for this run.
         recovered: List[CollectionResult] = []
         for result in results:
-            if not result.error or result.details.get("retryable") is False:
+            if not result.error:
                 recovered.append(result)
                 continue
             source = source_map[result.source_id]

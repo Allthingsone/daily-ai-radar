@@ -143,25 +143,6 @@ sources:
     allowed_domains: [aiera.com.cn]
     tags: [china, ai, wechat-publisher, model-release, product, research]
 
-  - id: zhihu-ai
-    name: 知乎 · AI 讨论
-    url: https://developer.zhihu.com/api/v1/content/zhihu_search
-    tier: 3
-    type: community
-    adapter: zhihu-search
-    focus: 0.7
-    max_items: 50
-    # Optional ZHIHU_ACCESS_SECRET comes only from the environment / Secrets.
-    # At most five official searches of ten results each; missing credentials
-    # skip this source without blocking other news or triggering retries.
-    queries: [人工智能, 大模型, AI Agent, 具身智能, 自动驾驶]
-    community_platform: 知乎
-    # Search position is NOT a hot-list rank. Require real votes or comments.
-    community_min_points: 100
-    community_min_comments: 30
-    allowed_domains: [developer.zhihu.com, www.zhihu.com, zhuanlan.zhihu.com]
-    tags: [community, discussion, china, ai]
-
   - id: hacker-news-top
     name: Hacker News · Top discussions
     url: https://hacker-news.firebaseio.com/v0/topstories.json

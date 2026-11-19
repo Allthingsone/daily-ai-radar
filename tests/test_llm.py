@@ -250,7 +250,7 @@ class DeepSeekScreenerTests(unittest.TestCase):
         )
         self.assertFalse(rejected["selected"])
 
-    def test_domestic_publishers_and_zhihu_use_the_existing_news_gates(self):
+    def test_domestic_publishers_and_community_use_the_existing_news_gates(self):
         # Run actual screened decisions on domestic-source candidates: source
         # reputation cannot bypass the category gates or fabricate article heat.
         cases = [
@@ -260,11 +260,11 @@ class DeepSeekScreenerTests(unittest.TestCase):
             ("新智元", "media", "research-result", {
                 "is_important_research_result": True, "has_verifiable_heat_signal": True,
             }, False, False),
-            ("知乎", "community", "model-release", {"is_major_foundation_model": True}, True, False),
-            ("知乎", "community", "community-trending", {
+            ("掘金", "community", "model-release", {"is_major_foundation_model": True}, True, False),
+            ("掘金", "community", "community-trending", {
                 "is_community_trending": True, "has_verifiable_heat_signal": True,
             }, True, True),
-            ("知乎", "community", "community-trending", {
+            ("掘金", "community", "community-trending", {
                 "is_community_trending": True, "has_verifiable_heat_signal": True,
             }, False, False),
         ]
@@ -276,7 +276,7 @@ class DeepSeekScreenerTests(unittest.TestCase):
             item.url = item.canonical_url = f"https://example.com/domestic/{index}"
             if source_type == "community":
                 item.metadata["community_signals"] = [{
-                    "platform": "知乎", "points": 120 if heat else 1,
+                    "platform": "掘金", "points": 400 if heat else 1,
                     "comments": 0, "qualified": heat,
                 }]
             items.append(item)
@@ -301,7 +301,7 @@ class DeepSeekScreenerTests(unittest.TestCase):
                          [case[-1] for case in cases])
         self.assertEqual(len(captured), 1)
         prompt = captured[0]["messages"][1]["content"]
-        for name in ("量子位", "新智元", "知乎"):
+        for name in ("量子位", "新智元", "掘金"):
             self.assertIn(name, prompt)
         self.assertIn("仅限自动驾驶", prompt)
 

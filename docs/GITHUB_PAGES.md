@@ -4,7 +4,7 @@
 
 ## 需要准备的账号与设置
 
-需要 GitHub、DeepSeek API 和已开通函数计算的阿里云账号；邮件推送还需要已开启 SMTP 的 163 邮箱。新闻 RSS、Hacker News、掘金与 arXiv 采集本身不需要 API Key。知乎、CSDN 和微信公众号本版未启用，因此当前部署不需要新增任何社区账号或 Secret。
+需要 GitHub、DeepSeek API 和已开通函数计算的阿里云账号；邮件推送还需要已开启 SMTP 的 163 邮箱。新闻 RSS、Hacker News、掘金、量子位和新智元官网与 arXiv 采集本身不需要 API Key。国内媒体读取公众号同名官网的公开文章，无需新增社区账号或新闻数据服务 Secret。知乎不接入，CSDN 默认停用。
 
 推荐创建公开仓库，例如 `daily-ai-radar`。GitHub Free 可以为公开仓库使用 Pages；私有仓库发布 Pages 取决于 GitHub 付费方案。
 
@@ -18,7 +18,6 @@
    - `DEEPSEEK_API_KEY`：DeepSeek 开放平台生成的 API Key。
    - `DAILY_RADAR_EMAIL_USERNAME`：163 邮箱地址。
    - `DAILY_RADAR_EMAIL_AUTH_CODE`：163 邮箱客户端授权码，不是网页登录密码。
-   - 可选 `ZHIHU_ACCESS_SECRET`：知乎数据开放平台的 Access Secret，用于国内 AI 讨论采集；不配置只跳过知乎。量子位、新智元官网文章不需要额外密钥。具体来源与筛选边界见 [`COMMUNITY_SOURCES.md`](COMMUNITY_SOURCES.md)。
 
 收件地址默认就是 `DAILY_RADAR_EMAIL_USERNAME`，无需再提供第二个邮箱。当前工作流把邮件发送视为每日交付的一部分；若两个邮件 Secret 缺失或 SMTP 发送失败，本次任务不会写入成功标记，后续备用触发会继续重试，并保留上一版成功页面。
 
@@ -102,7 +101,7 @@ https://YOUR_NAME.github.io/daily-ai-radar/
 
 其中“今日”按 `Asia/Shanghai` 自然日计算。旧论文可以出现在“近 4 日”，但不会填入“今日”。
 
-社区热议当前来自 Hacker News 官方 API 和掘金人工智能热榜；榜单排名与互动量会显示在条目卡片中。CSDN 适配器因原文日期在 CI 环境中无法稳定核验而默认停用。详细来源矩阵和知乎/公众号接入边界见 [`COMMUNITY_SOURCES.md`](COMMUNITY_SOURCES.md)。
+社区热议当前来自 Hacker News 官方 API 和掘金人工智能热榜；榜单排名与互动量会显示在条目卡片中。国内媒体还包括量子位、新智元官网的公开文章，使用相同的新闻筛选门槛。CSDN 适配器因原文日期在 CI 环境中无法稳定核验而默认停用。详细来源矩阵和公众号接入边界见 [`COMMUNITY_SOURCES.md`](COMMUNITY_SOURCES.md)。
 
 如果全部来源不可用、DeepSeek Key/邮件 Secret 缺失、SMTP 失败、模型响应不合法或预算耗尽，构建会失败，Pages 不会被空页面覆盖，也不会写入当日成功标记；下一个备用时间会继续尝试。部分来源失败时，系统会继续处理可验证结果，并把失败记录展示在“来源健康”区域。
 

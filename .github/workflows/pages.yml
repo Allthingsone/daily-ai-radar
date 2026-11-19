@@ -209,7 +209,6 @@ jobs:
           steps.execution-phase.outputs.value == 'news'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          ZHIHU_ACCESS_SECRET: ${{ secrets.ZHIHU_ACCESS_SECRET }}
           DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
         run: daily-radar collect --kind news
 
@@ -219,7 +218,6 @@ jobs:
           steps.execution-phase.outputs.value == 'publish'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          ZHIHU_ACCESS_SECRET: ${{ secrets.ZHIHU_ACCESS_SECRET }}
           DAILY_RADAR_USER_AGENT: "DailyAIRadar/${{ github.repository }} (contact: ${{ vars.ARXIV_CONTACT_EMAIL }})"
           FORCE_RUN: ${{ inputs.force }}
           TARGET_DATE: ${{ steps.usage-date.outputs.target_date }}

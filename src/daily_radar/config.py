@@ -35,7 +35,6 @@ class SourceConfig:
     community_rank_limit: int = 0
     community_min_points: int = 0
     community_min_comments: int = 0
-    queries: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
